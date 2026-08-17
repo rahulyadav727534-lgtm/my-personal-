@@ -13,7 +13,15 @@ import { TerminalHeader } from "@/src/components/TerminalHeader";
 import { useApp } from "@/src/context/AppContext";
 
 export default function CommandsScreen() {
-  const { commands, addCommand, updateCommandStatus, voiceprint, wakeConfig } = useApp();
+  const {
+    commands,
+    addCommand,
+    updateCommandStatus,
+    voiceprint,
+    wakeConfig,
+    session,
+    unlockTier2,
+  } = useApp();
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [modalVisible, setModalVisible] = useState(false);
   const [authModalVisible, setAuthModalVisible] = useState(false);
@@ -44,7 +52,8 @@ export default function CommandsScreen() {
       updateCommandStatus(id, "failed");
       return;
     }
-    if (tier === 2 && status === "pending_voice_auth") {
+    // Tier 2 requires an active voice-verified session
+    if (tier === 2 && !session) {
       setPendingCmdId(id);
       setAuthModalVisible(true);
     } else {
@@ -53,6 +62,7 @@ export default function CommandsScreen() {
   };
 
   const verifyVoiceAndExecute = () => {
+    unlockTier2("usr_owner");
     if (pendingCmdId) {
       updateCommandStatus(pendingCmdId, "executed");
     }

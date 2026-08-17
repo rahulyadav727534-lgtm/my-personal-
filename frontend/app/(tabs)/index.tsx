@@ -22,8 +22,27 @@ import {
 
 const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
 
+const formatMs = (ms: number): string => {
+  if (ms <= 0) return "0:00";
+  const total = Math.floor(ms / 1000);
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${m}:${s.toString().padStart(2, "0")}`;
+};
+
 export default function WakeWordScreen() {
-  const { wakeConfig, updateWakeConfig, toggleOnlineMode, isListening, toggleListening, addCommand } = useApp();
+  const {
+    wakeConfig,
+    updateWakeConfig,
+    toggleOnlineMode,
+    toggleOnlineFeature,
+    isListening,
+    toggleListening,
+    addCommand,
+    session,
+    sessionRemainingMs,
+    lockTier2,
+  } = useApp();
   const engineStatus = useMemo(() => getEngineStatus(), []);
   const [testCommandInput, setTestCommandInput] = useState("");
   const [wakePulse, setWakePulse] = useState(false);
@@ -75,6 +94,22 @@ export default function WakeWordScreen() {
 
   const dispatchOnlineQuery = async (rawQuery: string) => {
     const type = detectQueryType(rawQuery);
+    // Guard granular per-feature toggle
+    const featureKey: keyof typeof wakeConfig.onlineFeatures =
+      type === "meaning" ? "dictionary" : type === "knowledge" ? "knowledge" : "webSearch";
+    if (!wakeConfig.onlineFeatures[featureKey]) {
+      addCommand({
+        title: `${rawQuery} [BLOCKED: ${featureKey} disabled]`,
+        intent: `ONLINE_${type.toUpperCase()}_DISABLED`,
+        status: "failed",
+        tier: 2,
+        category: "online",
+      });
+      setQueryError(`Feature "${featureKey}" is turned OFF in granular toggles. Enable it in the Online Sub-Toggles card below.`);
+      setQueryResult({ query: rawQuery, answer: "", type });
+      setQueryModalVisible(true);
+      return;
+    }
     setQueryLoading(true);
     setQueryError(null);
     setQueryResult({ query: rawQuery, answer: "", type });
@@ -84,7 +119,11 @@ export default function WakeWordScreen() {
       const res = await fetch(`${BACKEND_URL}/api/online/query`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: rawQuery, query_type: type }),
+        body: JSON.stringify({
+          query: rawQuery,
+          query_type: type,
+          enabled_features: wakeConfig.onlineFeatures,
+        }),
       });
       if (!res.ok) {
         const err = await res.text();
@@ -246,6 +285,66 @@ export default function WakeWordScreen() {
               ? "ONLINE MODE ACTIVE: Internet queries, web search, and knowledge lookups are enabled. Voiceprint and local db remain strictly on-device."
               : "DEFAULT AIR-GAPPED: 100% offline. Zero network packets dispatched. Toggle ON in settings only when web search or meaning queries are explicitly needed."}
           </Text>
+        </View>
+
+        {/* Granular Online Feature Toggles */}
+        {wakeConfig.onlineMode && (
+          <View style={styles.card} testID="granular-toggles-card">
+            <View style={styles.row}>
+              <MaterialCommunityIcons name="tune-vertical" size={20} color="#FFB800" />
+              <Text style={styles.cardTitle}>Online Sub-Toggles</Text>
+            </View>
+            <Text style={styles.cardDesc}>
+              Fine-grained per-feature switches. Anything set OFF here is blocked even when master Online Mode is ON.
+            </Text>
+            {[
+              { key: "webSearch" as const, label: "Web Search", icon: "web-box", desc: "General web queries" },
+              { key: "dictionary" as const, label: "Dictionary / Meaning", icon: "book-alphabet", desc: "Word lookups" },
+              { key: "knowledge" as const, label: "General Knowledge", icon: "brain", desc: "Facts, who/when/why/how" },
+              { key: "translation" as const, label: "Translation", icon: "translate", desc: "Language translation (coming soon)" },
+            ].map((f) => (
+              <View key={f.key} style={styles.granRow} testID={`gran-toggle-row-${f.key}`}>
+                <View style={styles.granLeft}>
+                  <View style={styles.granIconBox}>
+                    <MaterialCommunityIcons name={f.icon as any} size={16} color="#FFB800" />
+                  </View>
+                  <View style={styles.flexOne}>
+                    <Text style={styles.granLabel}>{f.label}</Text>
+                    <Text style={styles.granDesc}>{f.desc}</Text>
+                  </View>
+                </View>
+                <Switch
+                  testID={`gran-switch-${f.key}`}
+                  value={wakeConfig.onlineFeatures[f.key]}
+                  onValueChange={(val) => toggleOnlineFeature(f.key, val)}
+                  trackColor={{ false: "#1A2821", true: "#FFB800" }}
+                  thumbColor={wakeConfig.onlineFeatures[f.key] ? "#090D0B" : "#819C8F"}
+                />
+              </View>
+            ))}
+          </View>
+        )}
+
+        {/* Tier-2 Session Status Chip */}
+        <View
+          style={[styles.sessionChip, session ? styles.sessionChipActive : styles.sessionChipLocked]}
+          testID="tier2-session-chip"
+        >
+          <MaterialCommunityIcons
+            name={session ? "shield-check" : "shield-lock"}
+            size={14}
+            color={session ? "#00FF66" : "#819C8F"}
+          />
+          <Text style={[styles.sessionChipText, session ? styles.sessionChipTextActive : {}]}>
+            {session
+              ? `TIER 2 UNLOCKED · ${formatMs(sessionRemainingMs)} left`
+              : "TIER 2 LOCKED · Voiceprint required for sensitive actions"}
+          </Text>
+          {session && (
+            <TouchableOpacity onPress={() => lockTier2()} testID="lock-tier2-btn">
+              <MaterialCommunityIcons name="lock" size={14} color="#FF334B" />
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* Main Neural Listener Card */}
@@ -538,6 +637,34 @@ const styles = StyleSheet.create({
     color: "#E2ECE7",
   },
   flexOne: { flex: 1 },
+  granRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#090D0B",
+    padding: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#2B2211",
+    gap: 10,
+  },
+  granLeft: { flexDirection: "row", alignItems: "center", gap: 10, flex: 1 },
+  granIconBox: {
+    width: 30, height: 30, borderRadius: 6, alignItems: "center", justifyContent: "center",
+    backgroundColor: "#2B2211", borderWidth: 1, borderColor: "#FFB800",
+  },
+  granLabel: { fontFamily: "SpaceGrotesk_700Bold", fontSize: 12, color: "#E2ECE7" },
+  granDesc: { fontFamily: "JetBrainsMono_400Regular", fontSize: 10, color: "#819C8F", marginTop: 2 },
+  sessionChip: {
+    flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 12, paddingVertical: 10,
+    borderRadius: 8, borderWidth: 1,
+  },
+  sessionChipLocked: { backgroundColor: "#1A2821", borderColor: "#1F382B" },
+  sessionChipActive: { backgroundColor: "#14261C", borderColor: "#00FF66" },
+  sessionChipText: {
+    fontFamily: "JetBrainsMono_400Regular", fontSize: 11, color: "#819C8F", flex: 1,
+  },
+  sessionChipTextActive: { color: "#00FF66" },
   cardOnlineActive: {
     borderColor: "#FFB800",
     backgroundColor: "#1A221C",

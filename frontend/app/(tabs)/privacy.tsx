@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   View,
   Text,
@@ -15,12 +15,37 @@ import { useApp } from "@/src/context/AppContext";
 const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
 
 export default function PrivacyScreen() {
-  const { privacyLedger, wakeConfig } = useApp();
+  const {
+    privacyLedger,
+    wakeConfig,
+    onDeviceModels,
+    session,
+    sessionRemainingMs,
+    systemStatus,
+    clearAllLocalData,
+  } = useApp();
   const [exportModalVisible, setExportModalVisible] = useState(false);
   const [exportLoading, setExportLoading] = useState(false);
   const [exportData, setExportData] = useState<any>(null);
   const [exportError, setExportError] = useState<string | null>(null);
+  const [wipeConfirmVisible, setWipeConfirmVisible] = useState(false);
+  const [liveStats, setLiveStats] = useState<{ outbound_packets: number; total_online_queries: number } | null>(null);
   const isOnline = wakeConfig.onlineMode;
+
+  useEffect(() => {
+    let cancelled = false;
+    const fetchStats = async () => {
+      try {
+        const res = await fetch(`${BACKEND_URL}/api/offline/status?online_mode=${isOnline}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!cancelled) setLiveStats(data);
+      } catch { /* silent */ }
+    };
+    fetchStats();
+    const id = setInterval(fetchStats, 8000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [isOnline]);
 
   const handleExport = async () => {
     setExportLoading(true);
@@ -129,6 +154,88 @@ export default function PrivacyScreen() {
           </TouchableOpacity>
         </View>
 
+        {/* Live Network I/O Stats (real-time counter) */}
+        <View style={styles.card} testID="live-stats-card">
+          <Text style={styles.sectionTitle}>LIVE NETWORK I/O</Text>
+          <View style={styles.statGrid}>
+            <View style={styles.statBox}>
+              <Text style={styles.statLabel}>OUTBOUND PACKETS</Text>
+              <Text style={[styles.statValue, isOnline && liveStats && liveStats.outbound_packets > 0 && styles.statValueAmber]}>
+                {liveStats?.outbound_packets ?? 0}
+              </Text>
+            </View>
+            <View style={styles.statBox}>
+              <Text style={styles.statLabel}>ONLINE QUERIES</Text>
+              <Text style={styles.statValue}>{liveStats?.total_online_queries ?? 0}</Text>
+            </View>
+            <View style={styles.statBox}>
+              <Text style={styles.statLabel}>TIER 2</Text>
+              <Text style={[styles.statValue, session ? styles.statValueGreen : styles.statValueRed]}>
+                {session ? `${Math.floor(sessionRemainingMs / 1000 / 60)}m` : "LOCK"}
+              </Text>
+            </View>
+          </View>
+          <Text style={styles.cardDesc}>
+            Counter auto-refreshes every 8s. All queries fully audited in local ledger.
+          </Text>
+        </View>
+
+        {/* On-Device Model Manifest */}
+        <View style={styles.card} testID="model-manifest-card">
+          <Text style={styles.sectionTitle}>ON-DEVICE MODEL MANIFEST</Text>
+          <Text style={styles.cardDesc}>
+            All ML weights bundled in APK. Zero cloud inference. Verify integrity via SHA-256 fingerprints.
+          </Text>
+          {onDeviceModels.map((m, idx) => (
+            <View key={m.name} style={styles.modelRow} testID={`model-row-${idx}`}>
+              <View style={styles.modelLeft}>
+                <MaterialCommunityIcons name="chip" size={16} color="#00FF66" />
+                <View style={styles.flexOne}>
+                  <Text style={styles.modelName}>{m.name} <Text style={styles.modelVer}>· {m.version}</Text></Text>
+                  <Text style={styles.modelDesc}>{m.purpose}</Text>
+                  <Text style={styles.modelHash}>sha256:{m.sha256}</Text>
+                </View>
+              </View>
+              <Text style={styles.modelSize}>{m.sizeMB} MB</Text>
+            </View>
+          ))}
+        </View>
+
+        {/* Permissions Audit (with mock revoke) */}
+        <View style={styles.card} testID="permissions-audit-card">
+          <Text style={styles.sectionTitle}>PERMISSIONS AUDIT</Text>
+          {Object.entries(systemStatus.permissionsGranted).map(([key, granted]) => (
+            <View key={key} style={styles.permAuditRow} testID={`perm-audit-${key}`}>
+              <View style={styles.row}>
+                <MaterialCommunityIcons
+                  name={granted ? "check-circle" : "close-circle"}
+                  size={16}
+                  color={granted ? "#00FF66" : "#FF334B"}
+                />
+                <Text style={styles.permAuditLabel}>{key.replace(/([A-Z])/g, " $1").toUpperCase()}</Text>
+              </View>
+              <Text style={[styles.permStatusText, granted ? styles.permGrantedTextX : styles.permDeniedText]}>
+                {granted ? "GRANTED" : "DENIED"}
+              </Text>
+            </View>
+          ))}
+        </View>
+
+        {/* Data Flow Diagram (text) */}
+        <View style={styles.card} testID="data-flow-card">
+          <Text style={styles.sectionTitle}>DATA FLOW DIAGRAM</Text>
+          <View style={styles.flowLine}><Text style={styles.flowSrc}>Microphone</Text><MaterialCommunityIcons name="arrow-right" size={12} color="#819C8F" /><Text style={styles.flowDst}>Porcupine NPU</Text></View>
+          <View style={styles.flowLine}><Text style={styles.flowSrc}>Porcupine wake</Text><MaterialCommunityIcons name="arrow-right" size={12} color="#819C8F" /><Text style={styles.flowDst}>Vosk STT</Text></View>
+          <View style={styles.flowLine}><Text style={styles.flowSrc}>Transcript</Text><MaterialCommunityIcons name="arrow-right" size={12} color="#819C8F" /><Text style={styles.flowDst}>NLU Intent Parser</Text></View>
+          <View style={styles.flowLine}><Text style={styles.flowSrc}>Voiceprint sample</Text><MaterialCommunityIcons name="arrow-right" size={12} color="#819C8F" /><Text style={styles.flowDst}>ONNX Encoder → SQLCipher</Text></View>
+          {isOnline && (
+            <View style={styles.flowLine}><Text style={styles.flowSrc}>[Online only] Query text</Text><MaterialCommunityIcons name="arrow-right" size={12} color="#FFB800" /><Text style={[styles.flowDst, { color: "#FFB800" }]}>Gemini 3 Flash → answer</Text></View>
+          )}
+          <Text style={styles.cardDesc}>
+            Voice samples never leave device. Only text (Online Mode) crosses network — one-shot, no retention on server.
+          </Text>
+        </View>
+
         {/* Security Checklist */}
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>PRIVACY GUARANTEES</Text>
@@ -148,7 +255,63 @@ export default function PrivacyScreen() {
             </View>
           ))}
         </View>
+
+        {/* Panic Wipe All Local Data */}
+        <View style={styles.card} testID="wipe-data-card">
+          <View style={styles.row}>
+            <MaterialCommunityIcons name="delete-forever" size={20} color="#FF334B" />
+            <Text style={styles.cardTitle}>Panic Wipe</Text>
+          </View>
+          <Text style={styles.cardDesc}>
+            Clears all locally-persisted state: voiceprint embeddings, enterprise members, command history, session tokens. Cannot be undone.
+          </Text>
+          <TouchableOpacity
+            style={styles.wipeBtn}
+            onPress={() => setWipeConfirmVisible(true)}
+            testID="wipe-data-btn"
+          >
+            <MaterialCommunityIcons name="alert-octagon" size={14} color="#FF334B" />
+            <Text style={styles.wipeBtnText}>WIPE ALL LOCAL DATA</Text>
+          </TouchableOpacity>
+        </View>
       </ScrollView>
+
+      {/* Wipe Confirm Modal */}
+      <Modal
+        visible={wipeConfirmVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setWipeConfirmVisible(false)}
+      >
+        <View style={styles.expOverlay}>
+          <View style={styles.wipeModal} testID="wipe-confirm-modal">
+            <MaterialCommunityIcons name="alert-octagon" size={36} color="#FF334B" />
+            <Text style={styles.wipeModalTitle}>Wipe All Local Data?</Text>
+            <Text style={styles.cardDesc}>
+              Voiceprint, enterprise members, command history, session tokens will be erased. Wake-word config resets to default. Ye action irreversible hai.
+            </Text>
+            <View style={styles.wipeActions}>
+              <TouchableOpacity
+                style={styles.wipeCancelBtn}
+                onPress={() => setWipeConfirmVisible(false)}
+                testID="cancel-wipe-btn"
+              >
+                <Text style={styles.wipeCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.wipeConfirmBtn}
+                onPress={async () => {
+                  await clearAllLocalData();
+                  setWipeConfirmVisible(false);
+                }}
+                testID="confirm-wipe-btn"
+              >
+                <Text style={styles.wipeConfirmText}>WIPE NOW</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* Audit Export Modal */}
       <Modal
@@ -446,4 +609,62 @@ const styles = StyleSheet.create({
   expCloseBtnText: {
     fontFamily: "SpaceGrotesk_700Bold", fontSize: 13, color: "#090D0B", letterSpacing: 1,
   },
+  statGrid: { flexDirection: "row", gap: 8 },
+  statBox: {
+    flex: 1, backgroundColor: "#090D0B", padding: 10, borderRadius: 8,
+    borderWidth: 1, borderColor: "#1F382B", alignItems: "center",
+  },
+  statLabel: { fontFamily: "JetBrainsMono_400Regular", fontSize: 9, color: "#819C8F", marginBottom: 4, letterSpacing: 0.5 },
+  statValue: { fontFamily: "SpaceGrotesk_700Bold", fontSize: 18, color: "#00FF66" },
+  statValueAmber: { color: "#FFB800" },
+  statValueGreen: { color: "#00FF66" },
+  statValueRed: { color: "#FF334B", fontSize: 14 },
+  modelRow: {
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10,
+    backgroundColor: "#090D0B", padding: 10, borderRadius: 8, borderWidth: 1, borderColor: "#1F382B",
+  },
+  modelLeft: { flexDirection: "row", alignItems: "flex-start", gap: 10, flex: 1 },
+  modelName: { fontFamily: "SpaceGrotesk_700Bold", fontSize: 12, color: "#E2ECE7" },
+  modelVer: { color: "#819C8F", fontFamily: "JetBrainsMono_400Regular" },
+  modelDesc: { fontFamily: "JetBrainsMono_400Regular", fontSize: 10, color: "#A2B8AE", marginTop: 2 },
+  modelHash: { fontFamily: "JetBrainsMono_400Regular", fontSize: 9, color: "#00FF66", marginTop: 3 },
+  modelSize: { fontFamily: "SpaceGrotesk_700Bold", fontSize: 11, color: "#8AB4FF" },
+  flexOne: { flex: 1 },
+  permAuditRow: {
+    flexDirection: "row", justifyContent: "space-between", alignItems: "center",
+    backgroundColor: "#090D0B", padding: 10, borderRadius: 8,
+    borderWidth: 1, borderColor: "#1F382B",
+  },
+  permAuditLabel: { fontFamily: "SpaceGrotesk_700Bold", fontSize: 11, color: "#E2ECE7", letterSpacing: 0.5 },
+  permStatusText: { fontFamily: "SpaceGrotesk_700Bold", fontSize: 10, letterSpacing: 1 },
+  permGrantedTextX: { color: "#00FF66" },
+  permDeniedText: { color: "#FF334B" },
+  flowLine: {
+    flexDirection: "row", alignItems: "center", gap: 6,
+    backgroundColor: "#090D0B", padding: 8, borderRadius: 6,
+    borderWidth: 1, borderColor: "#1F382B",
+  },
+  flowSrc: { fontFamily: "JetBrainsMono_400Regular", fontSize: 11, color: "#00FF66", flex: 1 },
+  flowDst: { fontFamily: "JetBrainsMono_400Regular", fontSize: 11, color: "#E2ECE7", flex: 1, textAlign: "right" },
+  wipeBtn: {
+    flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8,
+    backgroundColor: "#2A1216", borderWidth: 1, borderColor: "#FF334B",
+    paddingVertical: 12, borderRadius: 8, marginTop: 4,
+  },
+  wipeBtnText: { fontFamily: "SpaceGrotesk_700Bold", fontSize: 12, color: "#FF334B", letterSpacing: 1 },
+  wipeModal: {
+    backgroundColor: "#111A16", borderRadius: 16, borderWidth: 1, borderColor: "#FF334B",
+    padding: 22, gap: 12, alignItems: "center",
+  },
+  wipeModalTitle: { fontFamily: "SpaceGrotesk_700Bold", fontSize: 17, color: "#FF334B" },
+  wipeActions: { flexDirection: "row", gap: 10, width: "100%" },
+  wipeCancelBtn: {
+    flex: 1, backgroundColor: "#090D0B", borderWidth: 1, borderColor: "#1F382B",
+    paddingVertical: 11, borderRadius: 8, alignItems: "center",
+  },
+  wipeCancelText: { fontFamily: "SpaceGrotesk_700Bold", fontSize: 12, color: "#819C8F" },
+  wipeConfirmBtn: {
+    flex: 1, backgroundColor: "#FF334B", paddingVertical: 11, borderRadius: 8, alignItems: "center",
+  },
+  wipeConfirmText: { fontFamily: "SpaceGrotesk_700Bold", fontSize: 12, color: "#090D0B", letterSpacing: 1 },
 });

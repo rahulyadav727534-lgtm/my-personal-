@@ -64,6 +64,62 @@ class TestOnlineQuery:
         })
         assert r.status_code == 400, r.text
 
+    # ---- Granular Feature Gate (new) ----
+    def test_translation_disabled_returns_403(self, api_client):
+        r = api_client.post(f"{API}/online/query", json={
+            "query": "Hello world",
+            "query_type": "translation",
+            "enabled_features": {"webSearch": True, "dictionary": True, "knowledge": True, "translation": False},
+        })
+        assert r.status_code == 403, r.text
+        detail = r.json().get("detail", "")
+        assert "translation" in detail.lower()
+
+    def test_translation_enabled_returns_200(self, api_client):
+        r = api_client.post(f"{API}/online/query", json={
+            "query": "Translate 'good morning' to Hindi",
+            "query_type": "translation",
+            "enabled_features": {"webSearch": True, "dictionary": True, "knowledge": True, "translation": True},
+        }, timeout=60)
+        assert r.status_code == 200, r.text
+        data = r.json()
+        assert data["query_type"] == "translation"
+        assert len(data["answer"]) > 3
+
+    def test_enabled_features_omitted_backward_compat(self, api_client):
+        r = api_client.post(f"{API}/online/query", json={
+            "query": "Translate 'thank you' to Spanish",
+            "query_type": "translation",
+        }, timeout=60)
+        assert r.status_code == 200, r.text
+
+    def test_websearch_disabled_returns_403(self, api_client):
+        r = api_client.post(f"{API}/online/query", json={
+            "query": "What is Rust?",
+            "query_type": "search",
+            "enabled_features": {"webSearch": False, "dictionary": True, "knowledge": True, "translation": True},
+        })
+        assert r.status_code == 403, r.text
+        assert "websearch" in r.json().get("detail", "").lower()
+
+    def test_dictionary_disabled_returns_403(self, api_client):
+        r = api_client.post(f"{API}/online/query", json={
+            "query": "petrichor",
+            "query_type": "meaning",
+            "enabled_features": {"webSearch": True, "dictionary": False, "knowledge": True, "translation": True},
+        })
+        assert r.status_code == 403, r.text
+        assert "dictionary" in r.json().get("detail", "").lower()
+
+    def test_knowledge_disabled_returns_403(self, api_client):
+        r = api_client.post(f"{API}/online/query", json={
+            "query": "Photosynthesis?",
+            "query_type": "knowledge",
+            "enabled_features": {"webSearch": True, "dictionary": True, "knowledge": False, "translation": True},
+        })
+        assert r.status_code == 403, r.text
+        assert "knowledge" in r.json().get("detail", "").lower()
+
 
 # --------- Online History Ledger ---------
 class TestOnlineHistory:

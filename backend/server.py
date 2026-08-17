@@ -44,8 +44,9 @@ class StatusCheckCreate(BaseModel):
 
 class OnlineQueryRequest(BaseModel):
     query: str
-    query_type: Literal["search", "meaning", "knowledge"] = "search"
+    query_type: Literal["search", "meaning", "knowledge", "translation"] = "search"
     session_id: Optional[str] = None
+    enabled_features: Optional[dict] = None  # granular gate: {"webSearch": true, ...}
 
 
 class OnlineQueryResponse(BaseModel):
@@ -110,6 +111,17 @@ SYSTEM_PROMPT_MAP = {
         "You are NEXUS Knowledge Channel. Answer the general knowledge question factually and briefly. "
         "Under 60 words. No filler."
     ),
+    "translation": (
+        "You are NEXUS Translation Channel. Translate the input to the target language "
+        "the user mentioned; if unspecified, translate to English. Return only the translated text plus a single-line note."
+    ),
+}
+
+FEATURE_KEY_MAP = {
+    "search": "webSearch",
+    "meaning": "dictionary",
+    "knowledge": "knowledge",
+    "translation": "translation",
 }
 
 
@@ -123,6 +135,15 @@ async def online_query(req: OnlineQueryRequest):
 
     if not req.query.strip():
         raise HTTPException(status_code=400, detail="Query cannot be empty")
+
+    # Granular feature gate
+    if req.enabled_features is not None:
+        feature_key = FEATURE_KEY_MAP.get(req.query_type, "webSearch")
+        if not req.enabled_features.get(feature_key, True):
+            raise HTTPException(
+                status_code=403,
+                detail=f"Feature '{feature_key}' is disabled in granular toggles",
+            )
 
     session_id = req.session_id or f"nexus_{uuid.uuid4().hex[:12]}"
     system_message = SYSTEM_PROMPT_MAP.get(req.query_type, SYSTEM_PROMPT_MAP["search"])

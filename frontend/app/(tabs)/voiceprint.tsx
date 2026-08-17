@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   View,
   Text,
@@ -22,28 +22,71 @@ export default function VoiceprintScreen() {
     addMember,
     removeMember,
     enrollMemberVoiceprint,
+    session,
+    sessionRemainingMs,
+    unlockTier2,
+    lockTier2,
   } = useApp();
-  const [isCalibrating, setIsCalibrating] = useState(false);
-  const [calibrationStep, setCalibrationStep] = useState(0);
+  const [enrollModalVisible, setEnrollModalVisible] = useState(false);
+  const [enrollPhase, setEnrollPhase] = useState(0); // 0..3
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordSecs, setRecordSecs] = useState(0);
+  const [verifyModalVisible, setVerifyModalVisible] = useState(false);
+  const [verifyState, setVerifyState] = useState<"idle" | "listening" | "matched" | "rejected">("idle");
   const [memberModalVisible, setMemberModalVisible] = useState(false);
   const [newMemberName, setNewMemberName] = useState("");
   const [newMemberRole, setNewMemberRole] = useState<"ADMIN" | "USER">("USER");
 
-  const startCalibration = () => {
-    setIsCalibrating(true);
-    setCalibrationStep(1);
-    setTimeout(() => setCalibrationStep(2), 2000);
-    setTimeout(() => setCalibrationStep(3), 4000);
+  // Recording timer for enrollment phase
+  useEffect(() => {
+    if (!isRecording) return;
+    setRecordSecs(0);
+    const id = setInterval(() => setRecordSecs((s) => s + 1), 1000);
+    return () => clearInterval(id);
+  }, [isRecording]);
+
+  const startEnrollment = () => {
+    setEnrollModalVisible(true);
+    setEnrollPhase(1);
+    setIsRecording(false);
+  };
+
+  const captureCurrentPhrase = () => {
+    setIsRecording(true);
+    // Simulate 2.5s of "recording"
     setTimeout(() => {
-      setIsCalibrating(false);
-      setCalibrationStep(0);
-      updateVoiceprint({
-        enrolled: true,
-        confidenceScore: Number((98 + Math.random() * 1.8).toFixed(1)),
-        lastVerified: "Just now (Recalibrated)",
-        encryptedModelHash: `sha256:${Math.random().toString(36).substring(2, 15)}... (AES-256)`,
-      });
-    }, 6000);
+      setIsRecording(false);
+      if (enrollPhase < 3) {
+        setEnrollPhase((p) => p + 1);
+      } else {
+        // Complete enrollment — save encrypted embedding
+        updateVoiceprint({
+          enrolled: true,
+          confidenceScore: Number((98 + Math.random() * 1.8).toFixed(1)),
+          lastVerified: "Just now (Newly enrolled)",
+          encryptedModelHash: `sha256:${Math.random().toString(36).substring(2, 15)}... (AES-256 SQLCipher)`,
+        });
+        setTimeout(() => {
+          setEnrollModalVisible(false);
+          setEnrollPhase(0);
+        }, 1500);
+        setEnrollPhase(4); // completed marker
+      }
+    }, 2500);
+  };
+
+  const startVerify = () => {
+    setVerifyModalVisible(true);
+    setVerifyState("listening");
+    // Simulate 2s of listening then success
+    setTimeout(() => {
+      setVerifyState("matched");
+      unlockTier2("usr_owner");
+      setTimeout(() => {
+        setVerifyModalVisible(false);
+        setVerifyState("idle");
+      }, 1400);
+    }, 2200);
   };
 
   return (
@@ -114,30 +157,31 @@ export default function VoiceprintScreen() {
             </View>
           ))}
 
-          {isCalibrating ? (
-            <View style={styles.calibratingBox} testID="calibrating-state">
-              <MaterialCommunityIcons name="record-rec" size={24} color="#FF334B" />
-              <Text style={styles.calibratingText}>
-                {calibrationStep === 1
-                  ? "Phase 1/3: Speak phrase 1 clearly..."
-                  : calibrationStep === 2
-                  ? "Phase 2/3: Measuring vocal pitch & resonance..."
-                  : "Phase 3/3: Updating local encrypted embedding..."}
+          <View style={styles.actionBtnRow}>
+            <TouchableOpacity
+              style={styles.verifyBtn}
+              onPress={startVerify}
+              testID="verify-voice-btn"
+            >
+              <MaterialCommunityIcons name="shield-check" size={16} color="#00FF66" />
+              <Text style={styles.verifyBtnText}>
+                {session ? `Re-verify (${Math.floor(sessionRemainingMs / 1000 / 60)}m left)` : "Verify Voice → Unlock Tier 2"}
               </Text>
-              <View style={styles.authWaveformBox}>
-                {[70, 40, 90, 60, 100, 50, 80, 65, 95].map((h, i) => (
-                  <View key={i} style={[styles.authWaveBar, { height: `${h}%` }]} />
-                ))}
-              </View>
-            </View>
-          ) : (
+            </TouchableOpacity>
             <TouchableOpacity
               style={styles.calibrateBtn}
-              onPress={startCalibration}
+              onPress={startEnrollment}
               testID="start-calibration-btn"
             >
-              <MaterialCommunityIcons name="microphone-plus" size={18} color="#090D0B" />
-              <Text style={styles.calibrateBtnText}>Recalibrate Voiceprint</Text>
+              <MaterialCommunityIcons name="microphone-plus" size={16} color="#090D0B" />
+              <Text style={styles.calibrateBtnText}>Re-enroll</Text>
+            </TouchableOpacity>
+          </View>
+
+          {session && (
+            <TouchableOpacity style={styles.lockBtn} onPress={lockTier2} testID="lock-tier2-in-voiceprint">
+              <MaterialCommunityIcons name="lock" size={14} color="#FF334B" />
+              <Text style={styles.lockBtnText}>Lock Tier 2 Now</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -325,6 +369,127 @@ export default function VoiceprintScreen() {
                 <Text style={styles.modalSubmitText}>Add + Enroll</Text>
               </TouchableOpacity>
             </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Multi-Phase Voiceprint Enrollment Modal */}
+      <Modal
+        visible={enrollModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setEnrollModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.enrollModal} testID="enrollment-modal">
+            <Text style={styles.modalTitle}>VOICEPRINT ENROLLMENT</Text>
+            <Text style={styles.cardDesc}>
+              {enrollPhase < 4
+                ? `Phase ${enrollPhase}/3 · Speak the highlighted phrase clearly into the mic`
+                : "Local encrypted embedding written to SQLCipher"}
+            </Text>
+
+            <View style={styles.phaseIndicator} testID="enroll-phase-indicator">
+              {[1, 2, 3].map((p) => (
+                <View
+                  key={p}
+                  style={[
+                    styles.phaseDot,
+                    enrollPhase >= p && styles.phaseDotActive,
+                    enrollPhase === p && !isRecording && styles.phaseDotCurrent,
+                    enrollPhase > p && styles.phaseDotDone,
+                  ]}
+                >
+                  <Text style={styles.phaseDotText}>{p}</Text>
+                </View>
+              ))}
+            </View>
+
+            {enrollPhase >= 1 && enrollPhase <= 3 && (
+              <>
+                <View style={styles.phrasePromptBox} testID={`enroll-prompt-${enrollPhase}`}>
+                  <MaterialCommunityIcons name="format-quote-open" size={14} color="#00FF66" />
+                  <Text style={styles.phrasePromptText}>
+                    {voiceprint.enrollmentPhrases[enrollPhase - 1]}
+                  </Text>
+                </View>
+
+                {isRecording ? (
+                  <View style={styles.recordingBox} testID="recording-state">
+                    <MaterialCommunityIcons name="record-rec" size={20} color="#FF334B" />
+                    <Text style={styles.recordingText}>Recording · {recordSecs}s</Text>
+                    <View style={styles.miniWaveBox}>
+                      {[70, 40, 90, 60, 100, 50, 80, 65, 95, 55, 75, 40, 85].map((h, i) => (
+                        <View key={i} style={[styles.miniWaveBar, { height: `${h}%` }]} />
+                      ))}
+                    </View>
+                  </View>
+                ) : (
+                  <TouchableOpacity
+                    style={styles.recordBtn}
+                    onPress={captureCurrentPhrase}
+                    testID={`record-phrase-btn-${enrollPhase}`}
+                  >
+                    <MaterialCommunityIcons name="microphone" size={20} color="#090D0B" />
+                    <Text style={styles.recordBtnText}>Start Recording</Text>
+                  </TouchableOpacity>
+                )}
+              </>
+            )}
+
+            {enrollPhase === 4 && (
+              <View style={styles.enrollSuccessBox} testID="enroll-success">
+                <MaterialCommunityIcons name="check-decagram" size={28} color="#00FF66" />
+                <Text style={styles.enrollSuccessText}>Voiceprint enrolled & encrypted locally</Text>
+              </View>
+            )}
+
+            <TouchableOpacity
+              style={styles.modalCancelBtn}
+              onPress={() => {
+                setEnrollModalVisible(false);
+                setEnrollPhase(0);
+                setIsRecording(false);
+              }}
+              testID="cancel-enrollment"
+            >
+              <Text style={styles.modalCancelText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Verify Voice → Unlock Tier 2 Modal */}
+      <Modal
+        visible={verifyModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setVerifyModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.verifyModal} testID="verify-voice-modal">
+            <MaterialCommunityIcons
+              name={verifyState === "matched" ? "check-decagram" : "shield-search"}
+              size={36}
+              color={verifyState === "matched" ? "#00FF66" : "#FFB800"}
+            />
+            <Text style={styles.modalTitle}>
+              {verifyState === "matched" ? "OWNER VERIFIED" : "VOICE VERIFICATION"}
+            </Text>
+            <Text style={styles.cardDesc}>
+              {verifyState === "listening"
+                ? `Speak: "${voiceprint.enrollmentPhrases[0]}"`
+                : verifyState === "matched"
+                ? "Match confidence 99.1% · Tier 2 unlocked for 5 minutes"
+                : "Rejected — voice does not match owner embedding"}
+            </Text>
+            {verifyState === "listening" && (
+              <View style={styles.miniWaveBox}>
+                {[70, 40, 90, 60, 100, 50, 80, 65, 95, 55, 75, 40, 85].map((h, i) => (
+                  <View key={i} style={[styles.miniWaveBar, { height: `${h}%` }]} />
+                ))}
+              </View>
+            )}
           </View>
         </View>
       </Modal>
@@ -659,4 +824,73 @@ const styles = StyleSheet.create({
     flex: 1, backgroundColor: "#8AB4FF", paddingVertical: 12, borderRadius: 8, alignItems: "center",
   },
   modalSubmitText: { fontFamily: "SpaceGrotesk_700Bold", fontSize: 12, color: "#090D0B" },
+  actionBtnRow: { flexDirection: "row", gap: 10 },
+  verifyBtn: {
+    flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8,
+    backgroundColor: "#14261C", borderWidth: 1, borderColor: "#00FF66",
+    paddingVertical: 11, borderRadius: 8,
+  },
+  verifyBtnText: { fontFamily: "SpaceGrotesk_700Bold", fontSize: 12, color: "#00FF66" },
+  lockBtn: {
+    flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6,
+    backgroundColor: "#2A1216", borderWidth: 1, borderColor: "#FF334B",
+    paddingVertical: 9, borderRadius: 8, marginTop: 4,
+  },
+  lockBtnText: { fontFamily: "SpaceGrotesk_700Bold", fontSize: 11, color: "#FF334B" },
+  enrollModal: {
+    backgroundColor: "#111A16", borderRadius: 16, borderWidth: 1, borderColor: "#00FF66",
+    padding: 20, gap: 14,
+  },
+  phaseIndicator: {
+    flexDirection: "row", justifyContent: "center", gap: 20, marginTop: 4,
+  },
+  phaseDot: {
+    width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center",
+    backgroundColor: "#1A2821", borderWidth: 1, borderColor: "#1F382B",
+  },
+  phaseDotActive: { borderColor: "#00FF66" },
+  phaseDotCurrent: { backgroundColor: "#14261C" },
+  phaseDotDone: { backgroundColor: "#00FF66" },
+  phaseDotText: {
+    fontFamily: "SpaceGrotesk_700Bold", fontSize: 14, color: "#E2ECE7",
+  },
+  phrasePromptBox: {
+    flexDirection: "row", alignItems: "center", gap: 8,
+    backgroundColor: "#090D0B", borderWidth: 1, borderColor: "#00FF66",
+    padding: 12, borderRadius: 8,
+  },
+  phrasePromptText: {
+    fontFamily: "SpaceGrotesk_700Bold", fontSize: 14, color: "#00FF66", flex: 1,
+  },
+  recordingBox: {
+    alignItems: "center", gap: 10, padding: 12,
+    backgroundColor: "#2A1216", borderWidth: 1, borderColor: "#FF334B", borderRadius: 8,
+  },
+  recordingText: {
+    fontFamily: "SpaceGrotesk_700Bold", fontSize: 13, color: "#FF334B",
+  },
+  miniWaveBox: {
+    height: 34, width: "100%",
+    flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between",
+  },
+  miniWaveBar: { width: 5, backgroundColor: "#00FF66", borderRadius: 2 },
+  recordBtn: {
+    flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8,
+    backgroundColor: "#00FF66", paddingVertical: 12, borderRadius: 8,
+  },
+  recordBtnText: {
+    fontFamily: "SpaceGrotesk_700Bold", fontSize: 13, color: "#090D0B",
+  },
+  enrollSuccessBox: {
+    alignItems: "center", gap: 8,
+    backgroundColor: "#14261C", borderWidth: 1, borderColor: "#00FF66",
+    padding: 16, borderRadius: 8,
+  },
+  enrollSuccessText: {
+    fontFamily: "SpaceGrotesk_700Bold", fontSize: 13, color: "#00FF66", textAlign: "center",
+  },
+  verifyModal: {
+    backgroundColor: "#111A16", borderRadius: 16, borderWidth: 1, borderColor: "#00FF66",
+    padding: 22, gap: 12, alignItems: "center",
+  },
 });

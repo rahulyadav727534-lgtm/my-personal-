@@ -1,3 +1,10 @@
+export interface OnlineFeatures {
+  webSearch: boolean;
+  dictionary: boolean;
+  knowledge: boolean;
+  translation: boolean;
+}
+
 export interface WakeWordConfig {
   engine: string;
   wakeWord: string;
@@ -5,7 +12,8 @@ export interface WakeWordConfig {
   isActive: boolean;
   modelSizeMB: number;
   batteryImpact: string;
-  onlineMode: boolean; // NEW: Optional Online Mode toggle
+  onlineMode: boolean; // Master switch
+  onlineFeatures: OnlineFeatures; // Granular per-feature switches
 }
 
 export interface CommandItem {
@@ -35,6 +43,14 @@ export interface PrivacyLedger {
   lastAudit: string;
 }
 
+export interface OnDeviceModel {
+  name: string;
+  version: string;
+  sizeMB: number;
+  sha256: string;
+  purpose: string;
+}
+
 export interface SystemStatus {
   batteryUnrestricted: boolean;
   backgroundServiceRunning: boolean;
@@ -45,8 +61,15 @@ export interface SystemStatus {
     phoneCalls: boolean;
     camera: boolean;
     systemSettings: boolean;
-    internet: boolean; // Dynamic internet permission
+    internet: boolean;
   };
+}
+
+// Tier-2 unlock session (voice-verified)
+export interface UnlockedSession {
+  unlockedAt: number; // epoch ms
+  expiresAt: number; // epoch ms
+  verifiedBy: string; // member id
 }
 
 // Zero-Trust Enterprise Mode
@@ -77,10 +100,15 @@ export const initialWakeWordConfig: WakeWordConfig = {
   isActive: true,
   modelSizeMB: 1.8,
   batteryImpact: "0.2% per hour (Low Power NPU)",
-  onlineMode: false, // Default strictly offline
+  onlineMode: false,
+  onlineFeatures: {
+    webSearch: true,
+    dictionary: true,
+    knowledge: true,
+    translation: false,
+  },
 };
 
-// MOCK API: /api/offline/commands
 export const initialCommands: CommandItem[] = [
   {
     id: "cmd_01",
@@ -112,7 +140,7 @@ export const initialCommands: CommandItem[] = [
   {
     id: "cmd_04",
     tier: 2,
-    title: "Web Search: Quantum Computing Updates (Online Mode Required)",
+    title: "Web Search: Quantum Computing (Online Required)",
     intent: "WEB_SEARCH_ONLINE",
     status: "pending_voice_auth",
     timestamp: "10:15:20 AM",
@@ -129,7 +157,6 @@ export const initialCommands: CommandItem[] = [
   },
 ];
 
-// MOCK API: /api/offline/voiceprint
 export const initialVoiceprint: VoiceprintUser = {
   enrolled: true,
   confidenceScore: 98.4,
@@ -142,7 +169,6 @@ export const initialVoiceprint: VoiceprintUser = {
   encryptedModelHash: "sha256:8f94c2e11d04b98... (AES-256 SQLCipher)",
 };
 
-// MOCK API: /api/offline/privacy-ledger
 export const initialPrivacyLedger: PrivacyLedger = {
   airGapActive: true,
   onlineModeActive: false,
@@ -152,7 +178,6 @@ export const initialPrivacyLedger: PrivacyLedger = {
   lastAudit: "Continuous Air-Gap Verified (0 leaks)",
 };
 
-// MOCK API: /api/offline/system-status
 export const initialSystemStatus: SystemStatus = {
   batteryUnrestricted: true,
   backgroundServiceRunning: true,
@@ -163,11 +188,10 @@ export const initialSystemStatus: SystemStatus = {
     phoneCalls: true,
     camera: true,
     systemSettings: true,
-    internet: false, // Disabled when offline
+    internet: false,
   },
 };
 
-// MOCK API: /api/enterprise/config
 export const initialEnterpriseConfig: EnterpriseConfig = {
   modeEnabled: false,
   orgName: "NEXUS Personal Vault",
@@ -185,3 +209,34 @@ export const initialEnterpriseConfig: EnterpriseConfig = {
   totalCommandsAudited: 0,
 };
 
+// On-Device Models Manifest (Transparency Dashboard)
+export const initialOnDeviceModels: OnDeviceModel[] = [
+  {
+    name: "Porcupine Wake Word",
+    version: "v3.2",
+    sizeMB: 1.8,
+    sha256: "8f94c2e11d04b98a3ce2b5f21b8a4c8f",
+    purpose: "Always-on wake-word detection",
+  },
+  {
+    name: "Vosk STT Small",
+    version: "en-in-0.4",
+    sizeMB: 18.4,
+    sha256: "5ab7c2b8f11d04e19b4c8a3ce2f5a1b8",
+    purpose: "Offline speech-to-text transcription",
+  },
+  {
+    name: "Voiceprint Encoder",
+    version: "resemblyzer-onnx-q8",
+    sizeMB: 17.2,
+    sha256: "3ce2b5f21b8a4c8f8f94c2e11d04b98a",
+    purpose: "256-D speaker embedding",
+  },
+  {
+    name: "NLU Intent Rules",
+    version: "v1.4",
+    sizeMB: 0.3,
+    sha256: "b4c8a3ce2f5a1b85ab7c2b8f11d04e19",
+    purpose: "Offline rule-based intent parsing",
+  },
+];
