@@ -72,7 +72,7 @@ export interface EnterpriseConfig {
 // MOCK API: /api/offline/status
 export const initialWakeWordConfig: WakeWordConfig = {
   engine: "Porcupine-Embedded Nano (v3.2)",
-  wakeWord: "HEY ASSISTANT",
+  wakeWord: "JARVIS",
   sensitivity: 0.75,
   isActive: true,
   modelSizeMB: 1.8,

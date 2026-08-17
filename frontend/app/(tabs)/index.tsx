@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -13,16 +13,52 @@ import {
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { TerminalHeader } from "@/src/components/TerminalHeader";
 import { useApp } from "@/src/context/AppContext";
+import {
+  getEngineStatus,
+  emitWakeWord,
+  onWakeWord,
+  startEngine,
+} from "@/src/services/wakeWordEngine";
 
 const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
 
 export default function WakeWordScreen() {
   const { wakeConfig, updateWakeConfig, toggleOnlineMode, isListening, toggleListening, addCommand } = useApp();
+  const engineStatus = useMemo(() => getEngineStatus(), []);
   const [testCommandInput, setTestCommandInput] = useState("");
+  const [wakePulse, setWakePulse] = useState(false);
   const [simulatedTriggers, setSimulatedTriggers] = useState([
-    { id: "tr_1", time: "11:42:10 AM", confidence: 99.1, text: "Hey Assistant, stop alarm" },
-    { id: "tr_2", time: "10:15:02 AM", confidence: 97.8, text: "Hey Assistant, web search quantum computing" },
+    { id: "tr_1", time: "11:42:10 AM", confidence: 99.1, text: "Jarvis, stop alarm" },
+    { id: "tr_2", time: "10:15:02 AM", confidence: 97.8, text: "Jarvis, web search quantum computing" },
   ]);
+
+  // Start engine on mount; subscribe to wake-word events
+  useEffect(() => {
+    startEngine();
+    const unsubscribe = onWakeWord(() => {
+      setWakePulse(true);
+      const triggerId = `tr_${Date.now()}`;
+      setSimulatedTriggers((prev) => [
+        {
+          id: triggerId,
+          time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
+          confidence: Number((97 + Math.random() * 2.5).toFixed(1)),
+          text: `${engineStatus.keyword.toUpperCase()} detected`,
+        },
+        ...prev.slice(0, 4),
+      ]);
+      addCommand({
+        title: `${engineStatus.keyword.toUpperCase()} wake event`,
+        intent: "WAKE_WORD_DETECTED",
+        status: "executed",
+        tier: 1,
+        category: "system",
+      });
+      setTimeout(() => setWakePulse(false), 1200);
+    });
+    return unsubscribe;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Online query result modal state
   const [queryModalVisible, setQueryModalVisible] = useState(false);
@@ -104,7 +140,7 @@ export default function WakeWordScreen() {
     // Online mode: actually call backend
     if (requiresOnline && wakeConfig.onlineMode) {
       // Strip wake phrase prefix if present
-      const cleanQuery = text.replace(/^hey assistant,?\s*/i, "").replace(/^search\s+/i, "");
+      const cleanQuery = text.replace(/^jarvis,?\s*/i, "").replace(/^search\s+/i, "");
       dispatchOnlineQuery(cleanQuery);
       return;
     }
@@ -129,6 +165,63 @@ export default function WakeWordScreen() {
       />
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        {/* Engine Status Card — PREVIEW SIMULATION vs REAL PORCUPINE */}
+        <View
+          style={[
+            styles.engineStatusCard,
+            engineStatus.mode === "NATIVE_PORCUPINE" && styles.engineStatusCardReady,
+            wakePulse && styles.engineStatusCardPulse,
+          ]}
+          testID="engine-status-card"
+        >
+          <View style={styles.cardHeader}>
+            <View style={styles.row}>
+              <MaterialCommunityIcons
+                name={engineStatus.mode === "NATIVE_PORCUPINE" ? "chip" : "test-tube"}
+                size={22}
+                color={engineStatus.mode === "NATIVE_PORCUPINE" ? "#00FF66" : "#8AB4FF"}
+              />
+              <View style={styles.flexOne}>
+                <Text style={styles.engineStatusTitle}>
+                  {engineStatus.mode === "NATIVE_PORCUPINE"
+                    ? "PORCUPINE ENGINE READY"
+                    : "PREVIEW SIMULATION MODE"}
+                </Text>
+                <Text style={styles.engineStatusSubtitle}>
+                  Wake word:{" "}
+                  <Text style={styles.engineStatusHighlight}>
+                    {engineStatus.keyword.toUpperCase()}
+                  </Text>
+                  {"  ·  "}
+                  Key:{" "}
+                  <Text style={styles.engineStatusHighlight}>
+                    {engineStatus.accessKeyStatus}
+                  </Text>
+                </Text>
+              </View>
+            </View>
+            <TouchableOpacity
+              style={styles.triggerJarvisBtn}
+              onPress={() => emitWakeWord()}
+              testID="trigger-jarvis-btn"
+            >
+              <MaterialCommunityIcons name="access-point" size={14} color="#090D0B" />
+              <Text style={styles.triggerJarvisText}>TRIGGER</Text>
+            </TouchableOpacity>
+          </View>
+          <Text style={styles.engineStatusMsg}>{engineStatus.message}</Text>
+          {engineStatus.accessKeyStatus === "PLACEHOLDER" && (
+            <View style={styles.envHintBox} testID="env-hint-box">
+              <MaterialCommunityIcons name="key-variant" size={12} color="#FFB800" />
+              <Text style={styles.envHintText}>
+                Swap 1 line in <Text style={styles.envHintCode}>/app/frontend/.env</Text> →{" "}
+                <Text style={styles.envHintCode}>EXPO_PUBLIC_PORCUPINE_ACCESS_KEY</Text>. Guide:{" "}
+                <Text style={styles.envHintCode}>/app/WAKE_WORD_SETUP.md</Text>
+              </Text>
+            </View>
+          )}
+        </View>
+
         {/* Optional Online Mode Switch Card (Requirement #2) */}
         <View style={[styles.card, wakeConfig.onlineMode && styles.cardOnlineActive]} testID="online-mode-toggle-card">
           <View style={styles.cardHeader}>
@@ -225,7 +318,7 @@ export default function WakeWordScreen() {
           <View style={styles.triggerButtonRow}>
             <TouchableOpacity
               style={styles.triggerBtnPrimary}
-              onPress={() => handleSimulateTrigger("Hey Assistant, turn on flashlight", 1, false)}
+              onPress={() => handleSimulateTrigger("Jarvis, turn on flashlight", 1, false)}
               testID="sim-tier1-btn"
             >
               <MaterialCommunityIcons name="flash" size={16} color="#090D0B" />
@@ -234,7 +327,7 @@ export default function WakeWordScreen() {
 
             <TouchableOpacity
               style={[styles.triggerBtnSecondary, wakeConfig.onlineMode && styles.triggerBtnOnline]}
-              onPress={() => handleSimulateTrigger("Hey Assistant, search quantum computing", 2, true)}
+              onPress={() => handleSimulateTrigger("Jarvis, search quantum computing", 2, true)}
               testID="sim-online-search-btn"
             >
               <MaterialCommunityIcons name="web" size={16} color={wakeConfig.onlineMode ? "#FFB800" : "#00FF66"} />
@@ -370,6 +463,81 @@ const styles = StyleSheet.create({
     padding: 16,
     gap: 12,
   },
+  engineStatusCard: {
+    backgroundColor: "#0F1520",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#8AB4FF",
+    padding: 16,
+    gap: 10,
+  },
+  engineStatusCardReady: {
+    borderColor: "#00FF66",
+    backgroundColor: "#0E1A13",
+  },
+  engineStatusCardPulse: {
+    borderColor: "#00FF66",
+    backgroundColor: "#14261C",
+  },
+  engineStatusTitle: {
+    fontFamily: "SpaceGrotesk_700Bold",
+    fontSize: 14,
+    color: "#E2ECE7",
+    letterSpacing: 0.5,
+  },
+  engineStatusSubtitle: {
+    fontFamily: "JetBrainsMono_400Regular",
+    fontSize: 11,
+    color: "#819C8F",
+    marginTop: 3,
+  },
+  engineStatusHighlight: {
+    color: "#8AB4FF",
+    fontFamily: "SpaceGrotesk_700Bold",
+  },
+  engineStatusMsg: {
+    fontFamily: "JetBrainsMono_400Regular",
+    fontSize: 11,
+    color: "#A2B8AE",
+    lineHeight: 16,
+  },
+  triggerJarvisBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "#8AB4FF",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
+  },
+  triggerJarvisText: {
+    fontFamily: "SpaceGrotesk_700Bold",
+    fontSize: 11,
+    color: "#090D0B",
+    letterSpacing: 1,
+  },
+  envHintBox: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 6,
+    backgroundColor: "#2B2211",
+    borderWidth: 1,
+    borderColor: "#FFB800",
+    padding: 8,
+    borderRadius: 6,
+  },
+  envHintText: {
+    fontFamily: "JetBrainsMono_400Regular",
+    fontSize: 10,
+    color: "#FFB800",
+    flex: 1,
+    lineHeight: 14,
+  },
+  envHintCode: {
+    fontFamily: "SpaceGrotesk_700Bold",
+    color: "#E2ECE7",
+  },
+  flexOne: { flex: 1 },
   cardOnlineActive: {
     borderColor: "#FFB800",
     backgroundColor: "#1A221C",

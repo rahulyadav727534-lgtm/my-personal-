@@ -1,0 +1,40 @@
+{
+  "summary": "Wake-word JARVIS + Picovoice Porcupine PREVIEW_SIMULATION integration verified end-to-end. Frontend (390x844 mobile viewport): engine-status-card renders with title 'PREVIEW SIMULATION MODE', wake word 'JARVIS', key status 'PLACEHOLDER'; env-hint-box (amber) references '/app/frontend/.env' + '/app/WAKE_WORD_SETUP.md'; trigger-jarvis-btn appends a new wake-log entry with 'JARVIS detected' + confidence ~97% + current time, triggers the green engine-status-card pulse, and pushes a WAKE_WORD_DETECTED tier-1 executed row into the Commands tab; Background Listener Service card also references JARVIS; no lingering 'HEY ASSISTANT' text anywhere in the body. Regression: online-mode-switch flips amber 'ONLINE MODE ON' header badge, sim-online-search-btn opens online-query-result-modal and returns a real 707-char Gemini 3 Flash answer for 'quantum computing', Privacy DB export-audit-btn opens audit-export-modal with RECORDS=6 / ENGINE=v1 / SIGNED AT and JSON preview. Backend: 10/11 pytest cases green (search/meaning/knowledge query, empty-query 400, history GET, offline/status air-gap vs online, audit/export shape, status regression); the 1 failure is a KNOWN parallel-race artifact in test_history_delete_clears_ledger — pytest-xdist gw0 inserts a query while gw1 asserts the delete emptied the ledger. Not a backend bug. All 6 requested endpoints functional.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "DELETE /api/online/history (test only)", "issue": "test_history_delete_clears_ledger flakes under pytest-xdist parallel workers because another worker inserts a query between DELETE and the follow-up GET. Not a real endpoint bug (DELETE returns correct deleted count). Consider running that test class serialised (@pytest.mark.serial / -p no:xdist) or restructuring the assertion to check delete count only."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "React Native Web deprecation warnings", "issue": "Console emits '\"shadow*\" style props are deprecated. Use \"boxShadow\"' and 'props.pointerEvents is deprecated. Use style.pointerEvents' repeatedly. Non-blocking but should be cleaned up. Reference: likely in shared card/modal StyleSheets (search 'shadow' + 'pointerEvents' props across /app/frontend/src)."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_nexus_offline.py",
+    "/app/test_reports/pytest/pytest_results.xml",
+    "/app/test_reports/wake_pulse.png",
+    "/app/test_reports/commands_tab.png"
+  ],
+  "action_items": [
+    "(Low) Fix the flaky parallel delete test in /app/backend/tests/test_nexus_offline.py — either mark it serial or assert only on delete count, not on the follow-up empty GET.",
+    "(Low) Replace deprecated React Native Web style props ('shadow*' → 'boxShadow', props.pointerEvents → style.pointerEvents) to silence console warnings."
+  ],
+  "critical_code_review_comments": [
+    "wakeWordEngine.ts abstraction is clean: PLACEHOLDER detection, listener list, and [NATIVE_IMPL] block are well-documented and correctly gated. Emit-based interface means the same downstream flow runs in both PREVIEW_SIMULATION and NATIVE_PORCUPINE modes.",
+    "index.tsx wires startEngine() + onWakeWord() in a single useEffect with cleanup returning the unsubscribe — no listener leak risk on tab remount.",
+    "/app/WAKE_WORD_SETUP.md gives the correct 3-line swap path and covers Android permissions + iOS NSMicrophoneUsageDescription for post-Publish activation.",
+    "Backend server.py properly excludes MongoDB _id in every projection ({\"_id\": 0}) and uses env vars for MONGO_URL / DB_NAME / EMERGENT_LLM_KEY. No hardcoded secrets."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "91% (10/11, 1 flaky-parallel not a real bug)", "frontend": "100% on all wake-word tests + all requested regressions"},
+  "seed_data_creation": "Pytest suite creates a handful of online_query_logs rows and a TEST_ status check. Frontend TRIGGER button appends in-memory wake logs + commands (no DB writes).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Wake-word simulation is the intentional preview design — the trigger-jarvis-btn IS the proxy for on-device 'Jarvis' detection until a real Picovoice AccessKey + native EAS build lands. Do NOT flag PLACEHOLDER as a bug. Backend base URL: EXPO_PUBLIC_BACKEND_URL. Tab labels: Wake Word / Commands / Voiceprint / Privacy DB / System Setup. The audit export modal takes ~1-3s to populate, wait_for_timeout(3000+) after clicking export-audit-btn. Online search modal takes ~5-15s for the Gemini answer, poll on absence of [data-testid='online-query-loading'].",
+  "rca_of_issue": "N/A — all requested features verified working. Only the pytest-xdist race in the delete-clears-ledger test needs a serialisation tweak."
+}
