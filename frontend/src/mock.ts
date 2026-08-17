@@ -49,6 +49,26 @@ export interface SystemStatus {
   };
 }
 
+// Zero-Trust Enterprise Mode
+export type EnterpriseRole = "OWNER" | "ADMIN" | "USER";
+
+export interface EnterpriseMember {
+  id: string;
+  name: string;
+  role: EnterpriseRole;
+  voiceprintEnrolled: boolean;
+  matchConfidence: number;
+  lastVerified: string;
+  allowedTiers: (1 | 2)[];
+}
+
+export interface EnterpriseConfig {
+  modeEnabled: boolean;
+  orgName: string;
+  members: EnterpriseMember[];
+  totalCommandsAudited: number;
+}
+
 // MOCK API: /api/offline/status
 export const initialWakeWordConfig: WakeWordConfig = {
   engine: "Porcupine-Embedded Nano (v3.2)",
@@ -145,5 +165,23 @@ export const initialSystemStatus: SystemStatus = {
     systemSettings: true,
     internet: false, // Disabled when offline
   },
+};
+
+// MOCK API: /api/enterprise/config
+export const initialEnterpriseConfig: EnterpriseConfig = {
+  modeEnabled: false,
+  orgName: "NEXUS Personal Vault",
+  members: [
+    {
+      id: "usr_owner",
+      name: "Primary Owner",
+      role: "OWNER",
+      voiceprintEnrolled: true,
+      matchConfidence: 98.4,
+      lastVerified: "Today at 10:15 AM",
+      allowedTiers: [1, 2],
+    },
+  ],
+  totalCommandsAudited: 0,
 };
 

@@ -34,7 +34,7 @@ export default function TabLayout() {
             title: "Commands",
             tabBarIcon: ({ color, focused }) => (
               <MaterialCommunityIcons
-                name={focused ? "terminal" : "terminal"}
+                name={focused ? "console-line" : "console"}
                 size={22}
                 color={color}
               />

@@ -1,56 +1,53 @@
 {
-  "original_problem_statement": "Ek fully offline, on-device voice-controlled personal assistant app jo bina kisi internet/server connection ke poore phone ko control kare, sirf owner ki voice pehchan kar wake-word par activate ho, aur privacy-first architecture par bani ho. Update: Optional Online Mode toggle - default OFF, when ON allows web search/meaning/general knowledge queries with clear UI indicators.",
-  "architecture": "Offline-first native Android architecture with embedded wake-word engine (Porcupine/Vosk), two-tier access controller, local encrypted SQLCipher database, zero cloud telemetry, and optional Online Query Channel with strict query isolation.",
-  "user_personas": [
-    "Privacy-conscious owner seeking air-gapped voice control",
-    "Offline utility power user needing reliable hands-free device management",
-    "Occasional user who wants optional web search without sacrificing offline privacy"
-  ],
+  "original_problem_statement": "Ek fully offline, on-device voice-controlled personal assistant app jo bina kisi internet/server connection ke poore phone ko control kare, sirf owner ki voice pehchan kar wake-word par activate ho, aur privacy-first architecture par bani ho. + Optional Online Mode toggle for opt-in web queries. + Zero-Trust Enterprise Mode for multi-user vaults.",
+  "architecture": "Offline-first Expo React Native mock UI + FastAPI backend gateway. Online Query Channel powered by Gemini 3 Flash via Emergent LLM key. Multi-user voiceprint enterprise mode with local audit ledger.",
   "core_requirements": [
-    "1. Zero Server Dependency (100% offline NPU & models by default)",
-    "2. Always-on Wake Word Detection in background",
-    "3. Two-Tier Access System (Tier 1 locked state vs Tier 2 voiceprint-verified state)",
-    "4. Voiceprint-based speaker verification & local enrollment (ALWAYS offline)",
+    "1. Zero Server Dependency by default (Online Mode strictly opt-in)",
+    "2. Always-on Wake Word Detection (mocked; native plan in NATIVE_INTEGRATION_PLAN.md)",
+    "3. Two-Tier Access System (Tier 1 locked, Tier 2 voiceprint-verified)",
+    "4. Voiceprint-based speaker verification (always offline)",
     "5. Encrypted Local SQLite/SQLCipher storage",
-    "6. Battery optimization exemption & permission onboarding wizard",
-    "7. Optional Online Mode Toggle (default OFF) with clear UI indicators (green=offline, amber=online)"
+    "6. Battery optimization exemption wizard",
+    "7. Optional Online Mode with clear UI indicators (green=offline, amber=online)",
+    "8. Zero-Trust Enterprise Mode: multi-user voiceprint enrollment + role-based Tier access (OWNER/ADMIN/USER)",
+    "9. Local Audit Ledger export as signed JSON"
   ],
   "implemented_features": [
-    "Wake Word Engine Monitor with Online Mode Switch card + live waveform (Mar 2026)",
-    "Command Terminal with Online filter chip, ONLINE badges, and Online-blocked failure state (Mar 2026)",
-    "Voiceprint Biometric Enrollment with ALWAYS-OFFLINE reassurance banner (Mar 2026)",
-    "Privacy & Audit Ledger with dynamic Air-Gap vs Online Query Channel status + packet counter (Mar 2026)",
-    "System Setup Wizard with Battery bypass + NLU download + Optional Online Mode step (Mar 2026)",
-    "Global Terminal Header badge that switches between AIR-GAPPED (green) and ONLINE MODE ON (amber) across all tabs (Mar 2026)"
+    "Phase 1 UI: 5 tabs (Wake Word / Commands / Voiceprint / Privacy DB / Wizard) — cyberpunk neon green theme",
+    "Online Mode toggle wired across all 5 tabs with strict green/amber color contract",
+    "Phase 2 Backend: FastAPI /api/online/query, /api/online/history, /api/audit/export, /api/offline/status (Mar 2026)",
+    "Gemini 3 Flash integration via Emergent LLM key for real online query answers",
+    "Zero-Trust Enterprise Mode: multi-user enrollment, role-based Tier (OWNER/ADMIN/USER), add/remove/enroll flows",
+    "Audit Ledger Export modal with real MongoDB-backed JSON",
+    "TerminalHeader unified onlineMode indicator (amber pulse dot + badge)"
   ],
-  "online_mode_behavior": {
-    "default": "OFF (100% offline air-gapped)",
-    "visual_indicators": "Neon Green (#00FF66) for offline, Amber (#FFB800) for online",
-    "voiceprint_guarantee": "Voiceprint data NEVER goes online, regardless of toggle state",
-    "blocked_commands_when_off": "Online-category commands show blocked notice + failed status"
+  "backend_endpoints": {
+    "POST /api/online/query": "Dispatch a single query to Gemini 3 Flash. Body: {query, query_type: search|meaning|knowledge, session_id?}",
+    "GET /api/online/history?limit=20": "Fetch recent online queries (audit ledger).",
+    "DELETE /api/online/history": "Wipe online query history.",
+    "GET /api/audit/export": "Export full audit ledger as JSON (signed timestamp).",
+    "GET /api/offline/status?online_mode=false": "System status; outbound_packets stays 0 when offline."
   },
-  "mocked_in_frontend": [
-    "Offline Porcupine wake-word audio stream (simulated via local state & animated waveform)",
-    "SQLCipher database storage (simulated via React context state)",
-    "Android background service executor (simulated via interactive command logs)",
-    "Online query dispatch (simulated - no actual network call made yet)"
+  "test_results": {
+    "backend": "11/11 pytest passed (iteration_2.json)",
+    "frontend": "17/17 UI flows passed on 390×844 mobile viewport"
+  },
+  "still_mocked_features": [
+    "Actual on-device Porcupine wake-word (needs custom dev client build)",
+    "Vosk STT engine (needs custom dev client build)",
+    "SQLCipher on-device encryption (needs custom dev client build)",
+    "Voiceprint ONNX model inference (needs custom dev client build)",
+    "Real Android foreground service + battery bypass (needs custom dev client build)"
   ],
-  "prioritized_backlog": {
-    "P0": [
-      "Real JNI bindings for Porcupine wake word engine in Kotlin",
-      "SQLCipher C++ library integration for React Native"
-    ],
-    "P1": [
-      "Vosk C++ speech-to-text offline engine integration",
-      "Android Foreground Service notification channel setup",
-      "Phase 2: FastAPI backend endpoint for Online Mode web search simulation"
-    ],
-    "P2": [
-      "Custom NLU intent grammar JSON editor"
-    ]
-  },
+  "assets_user_must_provide_for_native_build": [
+    "Porcupine AccessKey (free at https://console.picovoice.ai)",
+    "Custom .ppn wake-word file (trained on Picovoice console)",
+    "Vosk small English model .zip (free from alphacephei.com)",
+    "iOS microphone/camera usage descriptions approval"
+  ],
   "next_tasks": [
-    "Phase 2: Build FastAPI backend endpoints for online web search simulation",
-    "Native integration research: Porcupine / Vosk / Voiceprint (requires custom dev client, not Expo Go)"
+    "Phase 3: Native Porcupine + Vosk integration via Expo custom dev client (see /app/NATIVE_INTEGRATION_PLAN.md)",
+    "Phase 4: SQLCipher migration + on-device audit ledger encryption",
+    "Phase 5: Real voiceprint enrollment with ONNX + anti-spoofing challenge"
   ]
 }

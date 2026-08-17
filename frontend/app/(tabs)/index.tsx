@@ -7,10 +7,14 @@ import {
   Switch,
   TouchableOpacity,
   TextInput,
+  Modal,
+  ActivityIndicator,
 } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { TerminalHeader } from "@/src/components/TerminalHeader";
 import { useApp } from "@/src/context/AppContext";
+
+const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
 
 export default function WakeWordScreen() {
   const { wakeConfig, updateWakeConfig, toggleOnlineMode, isListening, toggleListening, addCommand } = useApp();
@@ -19,6 +23,60 @@ export default function WakeWordScreen() {
     { id: "tr_1", time: "11:42:10 AM", confidence: 99.1, text: "Hey Assistant, stop alarm" },
     { id: "tr_2", time: "10:15:02 AM", confidence: 97.8, text: "Hey Assistant, web search quantum computing" },
   ]);
+
+  // Online query result modal state
+  const [queryModalVisible, setQueryModalVisible] = useState(false);
+  const [queryLoading, setQueryLoading] = useState(false);
+  const [queryResult, setQueryResult] = useState<{ query: string; answer: string; type: string } | null>(null);
+  const [queryError, setQueryError] = useState<string | null>(null);
+
+  const detectQueryType = (text: string): "search" | "meaning" | "knowledge" => {
+    const t = text.toLowerCase();
+    if (t.includes("meaning") || t.includes("define") || t.includes("what does") || t.includes("what is a word")) return "meaning";
+    if (t.includes("who") || t.includes("when") || t.includes("why") || t.includes("how")) return "knowledge";
+    return "search";
+  };
+
+  const dispatchOnlineQuery = async (rawQuery: string) => {
+    const type = detectQueryType(rawQuery);
+    setQueryLoading(true);
+    setQueryError(null);
+    setQueryResult({ query: rawQuery, answer: "", type });
+    setQueryModalVisible(true);
+
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/online/query`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: rawQuery, query_type: type }),
+      });
+      if (!res.ok) {
+        const err = await res.text();
+        throw new Error(`HTTP ${res.status}: ${err.substring(0, 120)}`);
+      }
+      const data = await res.json();
+      setQueryResult({ query: rawQuery, answer: data.answer, type });
+      // Log to command history
+      addCommand({
+        title: rawQuery,
+        intent: `ONLINE_${type.toUpperCase()}`,
+        status: "executed",
+        tier: 2,
+        category: "online",
+      });
+    } catch (e: any) {
+      setQueryError(e?.message || "Online query failed");
+      addCommand({
+        title: `${rawQuery} [Online query error]`,
+        intent: "ONLINE_ERROR",
+        status: "failed",
+        tier: 2,
+        category: "online",
+      });
+    } finally {
+      setQueryLoading(false);
+    }
+  };
 
   const handleSimulateTrigger = (text: string, tier: 1 | 2, requiresOnline: boolean = false) => {
     if (requiresOnline && !wakeConfig.onlineMode) {
@@ -31,13 +89,8 @@ export default function WakeWordScreen() {
       });
       return;
     }
-    addCommand({
-      title: text,
-      intent: text.toUpperCase().replace(/\s+/g, "_"),
-      status: tier === 2 ? "pending_voice_auth" : "executed",
-      tier: tier,
-      category: requiresOnline ? "online" : tier === 1 ? "hardware" : "security",
-    });
+
+    // Add to wake-log strip
     setSimulatedTriggers((prev) => [
       {
         id: `tr_${Date.now()}`,
@@ -47,6 +100,23 @@ export default function WakeWordScreen() {
       },
       ...prev.slice(0, 4),
     ]);
+
+    // Online mode: actually call backend
+    if (requiresOnline && wakeConfig.onlineMode) {
+      // Strip wake phrase prefix if present
+      const cleanQuery = text.replace(/^hey assistant,?\s*/i, "").replace(/^search\s+/i, "");
+      dispatchOnlineQuery(cleanQuery);
+      return;
+    }
+
+    // Otherwise, mock command execution
+    addCommand({
+      title: text,
+      intent: text.toUpperCase().replace(/\s+/g, "_"),
+      status: tier === 2 ? "pending_voice_auth" : "executed",
+      tier: tier,
+      category: requiresOnline ? "online" : tier === 1 ? "hardware" : "security",
+    });
   };
 
   return (
@@ -215,6 +285,69 @@ export default function WakeWordScreen() {
           ))}
         </View>
       </ScrollView>
+
+      {/* Online Query Result Modal */}
+      <Modal
+        visible={queryModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setQueryModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.queryModal} testID="online-query-result-modal">
+            <View style={styles.queryModalHeader}>
+              <MaterialCommunityIcons name="web" size={20} color="#FFB800" />
+              <Text style={styles.queryModalTitle}>ONLINE QUERY CHANNEL</Text>
+              <TouchableOpacity onPress={() => setQueryModalVisible(false)} testID="close-query-modal">
+                <MaterialCommunityIcons name="close" size={20} color="#819C8F" />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.queryTypePill}>
+              <Text style={styles.queryTypePillText}>
+                {queryResult?.type?.toUpperCase() || "SEARCH"}
+              </Text>
+            </View>
+
+            <Text style={styles.queryQ} testID="online-query-question">
+              {queryResult?.query}
+            </Text>
+
+            {queryLoading ? (
+              <View style={styles.queryLoadingBox} testID="online-query-loading">
+                <ActivityIndicator size="small" color="#FFB800" />
+                <Text style={styles.queryLoadingText}>
+                  Dispatching to Gemini 3 Flash via Online Channel...
+                </Text>
+              </View>
+            ) : queryError ? (
+              <View style={styles.queryErrorBox} testID="online-query-error">
+                <MaterialCommunityIcons name="alert-circle" size={16} color="#FF334B" />
+                <Text style={styles.queryErrorText}>{queryError}</Text>
+              </View>
+            ) : (
+              <ScrollView style={styles.queryAnswerScroll} testID="online-query-answer">
+                <Text style={styles.queryAnswerText}>{queryResult?.answer}</Text>
+              </ScrollView>
+            )}
+
+            <View style={styles.queryFooter}>
+              <MaterialCommunityIcons name="shield-check" size={12} color="#00FF66" />
+              <Text style={styles.queryFooterText}>
+                Voiceprint & local DB stayed offline. Only this query was dispatched.
+              </Text>
+            </View>
+
+            <TouchableOpacity
+              style={styles.queryCloseBtn}
+              onPress={() => setQueryModalVisible(false)}
+              testID="dismiss-query-modal"
+            >
+              <Text style={styles.queryCloseBtnText}>DISMISS</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -408,6 +541,129 @@ const styles = StyleSheet.create({
     fontFamily: "JetBrainsMono_400Regular",
     fontSize: 11,
     color: "#819C8F",
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(9, 13, 11, 0.85)",
+    justifyContent: "center",
+    padding: 20,
+  },
+  queryModal: {
+    backgroundColor: "#111A16",
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#FFB800",
+    padding: 18,
+    gap: 12,
+    maxHeight: "80%",
+  },
+  queryModalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  queryModalTitle: {
+    fontFamily: "SpaceGrotesk_700Bold",
+    fontSize: 15,
+    color: "#FFB800",
+    letterSpacing: 0.5,
+    flex: 1,
+  },
+  queryTypePill: {
+    alignSelf: "flex-start",
+    backgroundColor: "#2B2211",
+    borderWidth: 1,
+    borderColor: "#FFB800",
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 4,
+  },
+  queryTypePillText: {
+    fontFamily: "SpaceGrotesk_700Bold",
+    fontSize: 10,
+    color: "#FFB800",
+    letterSpacing: 1,
+  },
+  queryQ: {
+    fontFamily: "SpaceGrotesk_700Bold",
+    fontSize: 14,
+    color: "#E2ECE7",
+    lineHeight: 20,
+  },
+  queryLoadingBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    backgroundColor: "#090D0B",
+    padding: 14,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#2B2211",
+  },
+  queryLoadingText: {
+    fontFamily: "JetBrainsMono_400Regular",
+    fontSize: 12,
+    color: "#FFB800",
+    flex: 1,
+  },
+  queryErrorBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "#2A1216",
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#FF334B",
+  },
+  queryErrorText: {
+    fontFamily: "JetBrainsMono_400Regular",
+    fontSize: 12,
+    color: "#FF334B",
+    flex: 1,
+  },
+  queryAnswerScroll: {
+    maxHeight: 260,
+    backgroundColor: "#090D0B",
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#1F382B",
+  },
+  queryAnswerText: {
+    fontFamily: "JetBrainsMono_400Regular",
+    fontSize: 13,
+    color: "#E2ECE7",
+    lineHeight: 20,
+  },
+  queryFooter: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "#14261C",
+    borderWidth: 1,
+    borderColor: "#00FF66",
+    padding: 8,
+    borderRadius: 6,
+  },
+  queryFooterText: {
+    fontFamily: "JetBrainsMono_400Regular",
+    fontSize: 10,
+    color: "#00FF66",
+    flex: 1,
+  },
+  queryCloseBtn: {
+    backgroundColor: "#FFB800",
+    paddingVertical: 11,
+    borderRadius: 8,
+    alignItems: "center",
+  },
+  queryCloseBtnText: {
+    fontFamily: "SpaceGrotesk_700Bold",
+    fontSize: 13,
+    color: "#090D0B",
+    letterSpacing: 1,
   },
 });
 

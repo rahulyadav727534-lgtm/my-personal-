@@ -5,11 +5,15 @@ import {
   VoiceprintUser,
   PrivacyLedger,
   SystemStatus,
+  EnterpriseConfig,
+  EnterpriseMember,
+  EnterpriseRole,
   initialWakeWordConfig,
   initialCommands,
   initialVoiceprint,
   initialPrivacyLedger,
   initialSystemStatus,
+  initialEnterpriseConfig,
 } from "../mock";
 
 interface AppContextType {
@@ -28,6 +32,11 @@ interface AppContextType {
   setActiveTab: (tab: string) => void;
   isListening: boolean;
   toggleListening: () => void;
+  enterprise: EnterpriseConfig;
+  toggleEnterpriseMode: (enabled: boolean) => void;
+  addMember: (name: string, role: EnterpriseRole) => void;
+  removeMember: (id: string) => void;
+  enrollMemberVoiceprint: (id: string) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -40,6 +49,47 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [systemStatus, setSystemStatus] = useState<SystemStatus>(initialSystemStatus);
   const [activeTab, setActiveTab] = useState<string>("index");
   const [isListening, setIsListening] = useState<boolean>(true);
+  const [enterprise, setEnterprise] = useState<EnterpriseConfig>(initialEnterpriseConfig);
+
+  const toggleEnterpriseMode = (enabled: boolean) => {
+    setEnterprise((prev) => ({ ...prev, modeEnabled: enabled }));
+  };
+
+  const addMember = (name: string, role: EnterpriseRole) => {
+    const newMember: EnterpriseMember = {
+      id: `usr_${Date.now().toString(36)}`,
+      name,
+      role,
+      voiceprintEnrolled: false,
+      matchConfidence: 0,
+      lastVerified: "Never",
+      allowedTiers: role === "OWNER" || role === "ADMIN" ? [1, 2] : [1],
+    };
+    setEnterprise((prev) => ({ ...prev, members: [...prev.members, newMember] }));
+  };
+
+  const removeMember = (id: string) => {
+    setEnterprise((prev) => ({
+      ...prev,
+      members: prev.members.filter((m) => m.id !== id || m.role === "OWNER"),
+    }));
+  };
+
+  const enrollMemberVoiceprint = (id: string) => {
+    setEnterprise((prev) => ({
+      ...prev,
+      members: prev.members.map((m) =>
+        m.id === id
+          ? {
+              ...m,
+              voiceprintEnrolled: true,
+              matchConfidence: Number((96 + Math.random() * 3.5).toFixed(1)),
+              lastVerified: "Just enrolled",
+            }
+          : m,
+      ),
+    }));
+  };
 
   const updateWakeConfig = (partial: Partial<WakeWordConfig>) => {
     setWakeConfig((prev) => ({ ...prev, ...partial }));
@@ -106,6 +156,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         setActiveTab,
         isListening,
         toggleListening,
+        enterprise,
+        toggleEnterpriseMode,
+        addMember,
+        removeMember,
+        enrollMemberVoiceprint,
       }}
     >
       {children}

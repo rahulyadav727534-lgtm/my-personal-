@@ -5,15 +5,29 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  Modal,
+  TextInput,
 } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { TerminalHeader } from "@/src/components/TerminalHeader";
 import { useApp } from "@/src/context/AppContext";
 
 export default function VoiceprintScreen() {
-  const { voiceprint, updateVoiceprint, wakeConfig } = useApp();
+  const {
+    voiceprint,
+    updateVoiceprint,
+    wakeConfig,
+    enterprise,
+    toggleEnterpriseMode,
+    addMember,
+    removeMember,
+    enrollMemberVoiceprint,
+  } = useApp();
   const [isCalibrating, setIsCalibrating] = useState(false);
   const [calibrationStep, setCalibrationStep] = useState(0);
+  const [memberModalVisible, setMemberModalVisible] = useState(false);
+  const [newMemberName, setNewMemberName] = useState("");
+  const [newMemberRole, setNewMemberRole] = useState<"ADMIN" | "USER">("USER");
 
   const startCalibration = () => {
     setIsCalibrating(true);
@@ -128,6 +142,100 @@ export default function VoiceprintScreen() {
           )}
         </View>
 
+        {/* Zero-Trust Enterprise Mode Card */}
+        <View
+          style={[styles.card, enterprise.modeEnabled && styles.cardEnterpriseActive]}
+          testID="enterprise-mode-card"
+        >
+          <View style={styles.rowBetween}>
+            <View style={styles.row}>
+              <View style={[styles.iconBoxSmall, enterprise.modeEnabled && styles.iconBoxSmallActive]}>
+                <MaterialCommunityIcons
+                  name="office-building-cog"
+                  size={20}
+                  color={enterprise.modeEnabled ? "#8AB4FF" : "#819C8F"}
+                />
+              </View>
+              <View style={styles.flexOne}>
+                <Text style={styles.cardTitle}>Zero-Trust Enterprise Mode</Text>
+                <Text style={styles.cardSubtitle}>
+                  {enterprise.modeEnabled
+                    ? `${enterprise.members.length} members · ${enterprise.orgName}`
+                    : "Multi-user voiceprint vault (Personal by default)"}
+                </Text>
+              </View>
+            </View>
+            <TouchableOpacity
+              style={[styles.enterpriseToggle, enterprise.modeEnabled && styles.enterpriseToggleActive]}
+              onPress={() => toggleEnterpriseMode(!enterprise.modeEnabled)}
+              testID="enterprise-mode-toggle"
+            >
+              <Text style={[styles.enterpriseToggleText, enterprise.modeEnabled && styles.enterpriseToggleTextActive]}>
+                {enterprise.modeEnabled ? "ACTIVE" : "ENABLE"}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          <Text style={styles.cardDesc}>
+            {enterprise.modeEnabled
+              ? "Multiple owners/admins can enroll their voiceprints locally. Each member gets role-based Tier 1/Tier 2 access. All embeddings stored in SQLCipher, zero cloud."
+              : "Enable for shared devices (family, small team). Each member enrolls their own voiceprint; commands are audited per-user offline."}
+          </Text>
+
+          {enterprise.modeEnabled && (
+            <>
+              <View style={styles.membersList}>
+                {enterprise.members.map((m) => (
+                  <View key={m.id} style={styles.memberRow} testID={`member-row-${m.id}`}>
+                    <View style={styles.memberLeft}>
+                      <View style={[styles.roleBadge, styles[`roleBadge${m.role}` as const]]}>
+                        <Text style={styles.roleBadgeText}>{m.role}</Text>
+                      </View>
+                      <View style={styles.flexOne}>
+                        <Text style={styles.memberName}>{m.name}</Text>
+                        <Text style={styles.memberMeta}>
+                          {m.voiceprintEnrolled
+                            ? `${m.matchConfidence}% · Tier ${m.allowedTiers.join("+")}`
+                            : "Voiceprint not enrolled"}
+                        </Text>
+                      </View>
+                    </View>
+                    <View style={styles.memberActions}>
+                      {!m.voiceprintEnrolled && (
+                        <TouchableOpacity
+                          style={styles.memberEnrollBtn}
+                          onPress={() => enrollMemberVoiceprint(m.id)}
+                          testID={`enroll-member-${m.id}`}
+                        >
+                          <MaterialCommunityIcons name="microphone-plus" size={14} color="#00FF66" />
+                        </TouchableOpacity>
+                      )}
+                      {m.role !== "OWNER" && (
+                        <TouchableOpacity
+                          style={styles.memberRemoveBtn}
+                          onPress={() => removeMember(m.id)}
+                          testID={`remove-member-${m.id}`}
+                        >
+                          <MaterialCommunityIcons name="trash-can-outline" size={14} color="#FF334B" />
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  </View>
+                ))}
+              </View>
+
+              <TouchableOpacity
+                style={styles.addMemberBtn}
+                onPress={() => setMemberModalVisible(true)}
+                testID="open-add-member"
+              >
+                <MaterialCommunityIcons name="account-plus" size={16} color="#8AB4FF" />
+                <Text style={styles.addMemberBtnText}>Add Member (Voiceprint Enroll)</Text>
+              </TouchableOpacity>
+            </>
+          )}
+        </View>
+
         {/* Anti-Spoofing Security Card */}
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>ANTI-SPOOFING PROTECTIONS</Text>
@@ -149,6 +257,77 @@ export default function VoiceprintScreen() {
           </View>
         </View>
       </ScrollView>
+
+      {/* Add Member Modal */}
+      <Modal
+        visible={memberModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setMemberModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.addMemberModal} testID="add-member-modal">
+            <Text style={styles.modalTitle}>ENROLL NEW MEMBER</Text>
+            <Text style={styles.cardDesc}>
+              Member voiceprint locally trained + AES-256 embedded. Never leaves device.
+            </Text>
+            <TextInput
+              style={styles.modalInput}
+              placeholder="Member Name (e.g. Sister, Admin)"
+              placeholderTextColor="#819C8F"
+              value={newMemberName}
+              onChangeText={setNewMemberName}
+              testID="new-member-name-input"
+            />
+            <View style={styles.roleSelectRow}>
+              <TouchableOpacity
+                style={[styles.roleSelectBtn, newMemberRole === "USER" && styles.roleSelectBtnActive]}
+                onPress={() => setNewMemberRole("USER")}
+                testID="role-select-user"
+              >
+                <Text
+                  style={[styles.roleSelectText, newMemberRole === "USER" && styles.roleSelectTextActive]}
+                >
+                  USER (Tier 1)
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.roleSelectBtn, newMemberRole === "ADMIN" && styles.roleSelectBtnActive]}
+                onPress={() => setNewMemberRole("ADMIN")}
+                testID="role-select-admin"
+              >
+                <Text
+                  style={[styles.roleSelectText, newMemberRole === "ADMIN" && styles.roleSelectTextActive]}
+                >
+                  ADMIN (Tier 1+2)
+                </Text>
+              </TouchableOpacity>
+            </View>
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={styles.modalCancelBtn}
+                onPress={() => setMemberModalVisible(false)}
+                testID="cancel-add-member"
+              >
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.modalSubmitBtn}
+                onPress={() => {
+                  if (!newMemberName.trim()) return;
+                  addMember(newMemberName.trim(), newMemberRole);
+                  setNewMemberName("");
+                  setNewMemberRole("USER");
+                  setMemberModalVisible(false);
+                }}
+                testID="submit-add-member"
+              >
+                <Text style={styles.modalSubmitText}>Add + Enroll</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -376,4 +555,108 @@ const styles = StyleSheet.create({
     fontFamily: "SpaceGrotesk_700Bold",
     color: "#00FF66",
   },
+  cardEnterpriseActive: {
+    borderColor: "#8AB4FF",
+    backgroundColor: "#0F1520",
+  },
+  iconBoxSmall: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "#1A2821",
+    borderWidth: 1,
+    borderColor: "#1F382B",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  iconBoxSmallActive: {
+    borderColor: "#8AB4FF",
+    backgroundColor: "#121A2B",
+  },
+  flexOne: { flex: 1 },
+  enterpriseToggle: {
+    backgroundColor: "#090D0B",
+    borderWidth: 1,
+    borderColor: "#1F382B",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+  },
+  enterpriseToggleActive: {
+    borderColor: "#8AB4FF",
+    backgroundColor: "#121A2B",
+  },
+  enterpriseToggleText: {
+    fontFamily: "SpaceGrotesk_700Bold",
+    fontSize: 11,
+    color: "#819C8F",
+    letterSpacing: 1,
+  },
+  enterpriseToggleTextActive: { color: "#8AB4FF" },
+  membersList: { gap: 8 },
+  memberRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#090D0B",
+    padding: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#1F382B",
+    gap: 10,
+  },
+  memberLeft: { flexDirection: "row", alignItems: "center", gap: 10, flex: 1 },
+  roleBadge: { paddingHorizontal: 6, paddingVertical: 3, borderRadius: 4, minWidth: 52, alignItems: "center" },
+  roleBadgeOWNER: { backgroundColor: "#14261C", borderWidth: 1, borderColor: "#00FF66" },
+  roleBadgeADMIN: { backgroundColor: "#121A2B", borderWidth: 1, borderColor: "#8AB4FF" },
+  roleBadgeUSER: { backgroundColor: "#1A2821", borderWidth: 1, borderColor: "#1F382B" },
+  roleBadgeText: { fontFamily: "SpaceGrotesk_700Bold", fontSize: 9, color: "#E2ECE7", letterSpacing: 1 },
+  memberName: { fontFamily: "SpaceGrotesk_700Bold", fontSize: 13, color: "#E2ECE7" },
+  memberMeta: { fontFamily: "JetBrainsMono_400Regular", fontSize: 10, color: "#819C8F", marginTop: 2 },
+  memberActions: { flexDirection: "row", gap: 6 },
+  memberEnrollBtn: {
+    width: 30, height: 30, borderRadius: 6, alignItems: "center", justifyContent: "center",
+    backgroundColor: "#14261C", borderWidth: 1, borderColor: "#00FF66",
+  },
+  memberRemoveBtn: {
+    width: 30, height: 30, borderRadius: 6, alignItems: "center", justifyContent: "center",
+    backgroundColor: "#2A1216", borderWidth: 1, borderColor: "#FF334B",
+  },
+  addMemberBtn: {
+    flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8,
+    backgroundColor: "#121A2B", borderWidth: 1, borderColor: "#8AB4FF",
+    paddingVertical: 10, borderRadius: 8,
+  },
+  addMemberBtnText: { fontFamily: "SpaceGrotesk_700Bold", fontSize: 12, color: "#8AB4FF" },
+  modalOverlay: {
+    flex: 1, backgroundColor: "rgba(9, 13, 11, 0.85)", justifyContent: "center", padding: 20,
+  },
+  addMemberModal: {
+    backgroundColor: "#111A16", borderRadius: 16, borderWidth: 1, borderColor: "#8AB4FF",
+    padding: 20, gap: 14,
+  },
+  modalTitle: { fontFamily: "SpaceGrotesk_700Bold", fontSize: 16, color: "#E2ECE7", letterSpacing: 0.5 },
+  modalInput: {
+    backgroundColor: "#090D0B", borderWidth: 1, borderColor: "#1F382B", borderRadius: 8,
+    paddingHorizontal: 12, paddingVertical: 12,
+    fontFamily: "JetBrainsMono_400Regular", fontSize: 13, color: "#E2ECE7",
+  },
+  roleSelectRow: { flexDirection: "row", gap: 8 },
+  roleSelectBtn: {
+    flex: 1, backgroundColor: "#090D0B", borderWidth: 1, borderColor: "#1F382B",
+    paddingVertical: 10, borderRadius: 8, alignItems: "center",
+  },
+  roleSelectBtnActive: { backgroundColor: "#121A2B", borderColor: "#8AB4FF" },
+  roleSelectText: { fontFamily: "SpaceGrotesk_700Bold", fontSize: 11, color: "#819C8F" },
+  roleSelectTextActive: { color: "#8AB4FF" },
+  modalActions: { flexDirection: "row", gap: 10, marginTop: 4 },
+  modalCancelBtn: {
+    flex: 1, backgroundColor: "#090D0B", borderWidth: 1, borderColor: "#1F382B",
+    paddingVertical: 12, borderRadius: 8, alignItems: "center",
+  },
+  modalCancelText: { fontFamily: "SpaceGrotesk_700Bold", fontSize: 12, color: "#819C8F" },
+  modalSubmitBtn: {
+    flex: 1, backgroundColor: "#8AB4FF", paddingVertical: 12, borderRadius: 8, alignItems: "center",
+  },
+  modalSubmitText: { fontFamily: "SpaceGrotesk_700Bold", fontSize: 12, color: "#090D0B" },
 });

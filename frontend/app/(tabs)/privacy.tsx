@@ -5,15 +5,39 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  Modal,
+  ActivityIndicator,
 } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { TerminalHeader } from "@/src/components/TerminalHeader";
 import { useApp } from "@/src/context/AppContext";
 
+const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
+
 export default function PrivacyScreen() {
   const { privacyLedger, wakeConfig } = useApp();
-  const [exported, setExported] = useState(false);
+  const [exportModalVisible, setExportModalVisible] = useState(false);
+  const [exportLoading, setExportLoading] = useState(false);
+  const [exportData, setExportData] = useState<any>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
   const isOnline = wakeConfig.onlineMode;
+
+  const handleExport = async () => {
+    setExportLoading(true);
+    setExportError(null);
+    setExportData(null);
+    setExportModalVisible(true);
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/audit/export`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setExportData(data);
+    } catch (e: any) {
+      setExportError(e?.message || "Export failed");
+    } finally {
+      setExportLoading(false);
+    }
+  };
 
   return (
     <View style={styles.container} testID="privacy-screen">
@@ -97,13 +121,11 @@ export default function PrivacyScreen() {
 
           <TouchableOpacity
             style={styles.exportBtn}
-            onPress={() => setExported(true)}
+            onPress={handleExport}
             testID="export-audit-btn"
           >
             <MaterialCommunityIcons name="file-document-outline" size={16} color="#090D0B" />
-            <Text style={styles.exportBtnText}>
-              {exported ? "Encrypted Ledger Exported Locally" : "Export Local Audit Ledger"}
-            </Text>
+            <Text style={styles.exportBtnText}>Export Local Audit Ledger</Text>
           </TouchableOpacity>
         </View>
 
@@ -127,6 +149,73 @@ export default function PrivacyScreen() {
           ))}
         </View>
       </ScrollView>
+
+      {/* Audit Export Modal */}
+      <Modal
+        visible={exportModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setExportModalVisible(false)}
+      >
+        <View style={styles.expOverlay}>
+          <View style={styles.expModal} testID="audit-export-modal">
+            <View style={styles.expHeader}>
+              <MaterialCommunityIcons name="file-lock" size={20} color="#00FF66" />
+              <Text style={styles.expTitle}>AUDIT LEDGER EXPORT</Text>
+              <TouchableOpacity
+                onPress={() => setExportModalVisible(false)}
+                testID="close-export-modal"
+              >
+                <MaterialCommunityIcons name="close" size={20} color="#819C8F" />
+              </TouchableOpacity>
+            </View>
+
+            {exportLoading ? (
+              <View style={styles.expLoading} testID="export-loading">
+                <ActivityIndicator size="small" color="#00FF66" />
+                <Text style={styles.expLoadingText}>Compiling encrypted local ledger...</Text>
+              </View>
+            ) : exportError ? (
+              <View style={styles.expError} testID="export-error">
+                <MaterialCommunityIcons name="alert-circle" size={16} color="#FF334B" />
+                <Text style={styles.expErrorText}>{exportError}</Text>
+              </View>
+            ) : exportData ? (
+              <>
+                <View style={styles.expStatRow}>
+                  <View style={styles.expStat}>
+                    <Text style={styles.expStatLabel}>RECORDS</Text>
+                    <Text style={styles.expStatValue}>{exportData.total_records}</Text>
+                  </View>
+                  <View style={styles.expStat}>
+                    <Text style={styles.expStatLabel}>ENGINE</Text>
+                    <Text style={styles.expStatValueSmall}>v1</Text>
+                  </View>
+                  <View style={styles.expStat}>
+                    <Text style={styles.expStatLabel}>SIGNED AT</Text>
+                    <Text style={styles.expStatValueSmall}>
+                      {new Date(exportData.exported_at).toLocaleTimeString()}
+                    </Text>
+                  </View>
+                </View>
+                <ScrollView style={styles.expJsonScroll} testID="export-json-scroll">
+                  <Text style={styles.expJsonText}>
+                    {JSON.stringify(exportData, null, 2)}
+                  </Text>
+                </ScrollView>
+              </>
+            ) : null}
+
+            <TouchableOpacity
+              style={styles.expCloseBtn}
+              onPress={() => setExportModalVisible(false)}
+              testID="dismiss-export-modal"
+            >
+              <Text style={styles.expCloseBtnText}>DISMISS</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -311,5 +400,50 @@ const styles = StyleSheet.create({
   },
   channelStatusTextOnline: {
     color: "#FFB800",
+  },
+  expOverlay: {
+    flex: 1, backgroundColor: "rgba(9, 13, 11, 0.85)", justifyContent: "center", padding: 20,
+  },
+  expModal: {
+    backgroundColor: "#111A16", borderRadius: 16, borderWidth: 1, borderColor: "#00FF66",
+    padding: 18, gap: 12, maxHeight: "85%",
+  },
+  expHeader: { flexDirection: "row", alignItems: "center", gap: 10 },
+  expTitle: {
+    fontFamily: "SpaceGrotesk_700Bold", fontSize: 15, color: "#00FF66",
+    letterSpacing: 0.5, flex: 1,
+  },
+  expLoading: {
+    flexDirection: "row", alignItems: "center", gap: 10,
+    backgroundColor: "#090D0B", padding: 14, borderRadius: 8,
+    borderWidth: 1, borderColor: "#1F382B",
+  },
+  expLoadingText: { fontFamily: "JetBrainsMono_400Regular", fontSize: 12, color: "#00FF66", flex: 1 },
+  expError: {
+    flexDirection: "row", alignItems: "center", gap: 8,
+    backgroundColor: "#2A1216", padding: 12, borderRadius: 8,
+    borderWidth: 1, borderColor: "#FF334B",
+  },
+  expErrorText: { fontFamily: "JetBrainsMono_400Regular", fontSize: 12, color: "#FF334B", flex: 1 },
+  expStatRow: { flexDirection: "row", gap: 8 },
+  expStat: {
+    flex: 1, backgroundColor: "#090D0B", padding: 10, borderRadius: 6,
+    borderWidth: 1, borderColor: "#1F382B", alignItems: "center",
+  },
+  expStatLabel: { fontFamily: "JetBrainsMono_400Regular", fontSize: 9, color: "#819C8F", marginBottom: 4 },
+  expStatValue: { fontFamily: "SpaceGrotesk_700Bold", fontSize: 16, color: "#00FF66" },
+  expStatValueSmall: { fontFamily: "JetBrainsMono_400Regular", fontSize: 11, color: "#E2ECE7" },
+  expJsonScroll: {
+    maxHeight: 320, backgroundColor: "#090D0B", padding: 10, borderRadius: 8,
+    borderWidth: 1, borderColor: "#1F382B",
+  },
+  expJsonText: {
+    fontFamily: "JetBrainsMono_400Regular", fontSize: 10, color: "#00FF66", lineHeight: 15,
+  },
+  expCloseBtn: {
+    backgroundColor: "#00FF66", paddingVertical: 11, borderRadius: 8, alignItems: "center",
+  },
+  expCloseBtnText: {
+    fontFamily: "SpaceGrotesk_700Bold", fontSize: 13, color: "#090D0B", letterSpacing: 1,
   },
 });
