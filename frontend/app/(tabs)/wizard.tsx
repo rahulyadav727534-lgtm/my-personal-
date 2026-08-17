@@ -11,7 +11,7 @@ import { TerminalHeader } from "@/src/components/TerminalHeader";
 import { useApp } from "@/src/context/AppContext";
 
 export default function WizardScreen() {
-  const { systemStatus, updateSystemStatus } = useApp();
+  const { systemStatus, updateSystemStatus, wakeConfig, toggleOnlineMode } = useApp();
   const [batteryWhitelisted, setBatteryWhitelisted] = useState(systemStatus.batteryUnrestricted);
   const [nluDownloaded, setNluDownloaded] = useState(systemStatus.offlineNluLoaded);
 
@@ -31,7 +31,8 @@ export default function WizardScreen() {
       <TerminalHeader
         title="SYSTEM SETUP WIZARD"
         subtitle="Battery Bypass & Offline NPU Config"
-        rightBadge="READY"
+        rightBadge={wakeConfig.onlineMode ? "ONLINE MODE ON" : "READY"}
+        onlineMode={wakeConfig.onlineMode}
       />
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
@@ -97,7 +98,51 @@ export default function WizardScreen() {
           </Text>
         </View>
 
-        {/* Step 3: Permissions Checklist */}
+        {/* Step 3: Optional Online Mode Toggle */}
+        <View
+          style={[styles.card, wakeConfig.onlineMode && styles.cardOnline]}
+          testID="online-mode-wizard-card"
+        >
+          <View style={styles.rowBetween}>
+            <View style={styles.row}>
+              <View style={[styles.stepIconBox, wakeConfig.onlineMode && styles.stepIconBoxOnline]}>
+                <MaterialCommunityIcons
+                  name={wakeConfig.onlineMode ? "web" : "wifi-off"}
+                  size={20}
+                  color={wakeConfig.onlineMode ? "#FFB800" : "#00FF66"}
+                />
+              </View>
+              <View>
+                <Text style={styles.cardTitle}>Online Mode (Optional)</Text>
+                <Text style={styles.cardSubtitle}>
+                  {wakeConfig.onlineMode ? "Amber channel — Web queries allowed" : "Default OFF — 100% Air-Gapped"}
+                </Text>
+              </View>
+            </View>
+            <TouchableOpacity
+              style={[
+                styles.actionToggleBtn,
+                wakeConfig.onlineMode ? styles.actionToggleBtnOnline : styles.actionToggleBtnActive,
+              ]}
+              onPress={() => toggleOnlineMode(!wakeConfig.onlineMode)}
+              testID="wizard-online-mode-toggle"
+            >
+              <Text
+                style={[
+                  styles.actionToggleText,
+                  wakeConfig.onlineMode ? styles.actionToggleTextOnline : styles.actionToggleTextActive,
+                ]}
+              >
+                {wakeConfig.onlineMode ? "ONLINE ON" : "AIR-GAPPED"}
+              </Text>
+            </TouchableOpacity>
+          </View>
+          <Text style={styles.cardDesc}>
+            By default app strictly 100% offline hai. Ye toggle sirf tabhi ON karein jab aapko web search, meaning ya general knowledge queries chahiye. Voiceprint, command history & personal data hamesha on-device rahenge.
+          </Text>
+        </View>
+
+        {/* Step 4: Permissions Checklist */}
         <View style={styles.card} testID="permissions-checklist-card">
           <Text style={styles.sectionTitle}>MINIMAL PERMISSIONS AUDIT</Text>
 
@@ -225,5 +270,20 @@ const styles = StyleSheet.create({
     fontFamily: "SpaceGrotesk_700Bold",
     fontSize: 11,
     color: "#00FF66",
+  },
+  cardOnline: {
+    borderColor: "#FFB800",
+    backgroundColor: "#1A221C",
+  },
+  stepIconBoxOnline: {
+    borderColor: "#FFB800",
+    backgroundColor: "#2B2211",
+  },
+  actionToggleBtnOnline: {
+    backgroundColor: "#2B2211",
+    borderColor: "#FFB800",
+  },
+  actionToggleTextOnline: {
+    color: "#FFB800",
   },
 });

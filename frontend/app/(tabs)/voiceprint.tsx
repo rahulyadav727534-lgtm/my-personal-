@@ -11,7 +11,7 @@ import { TerminalHeader } from "@/src/components/TerminalHeader";
 import { useApp } from "@/src/context/AppContext";
 
 export default function VoiceprintScreen() {
-  const { voiceprint, updateVoiceprint } = useApp();
+  const { voiceprint, updateVoiceprint, wakeConfig } = useApp();
   const [isCalibrating, setIsCalibrating] = useState(false);
   const [calibrationStep, setCalibrationStep] = useState(0);
 
@@ -38,9 +38,20 @@ export default function VoiceprintScreen() {
         title="VOICEPRINT BIOMETRICS"
         subtitle="On-Device Speaker Verification"
         rightBadge={voiceprint.enrolled ? "OWNER VERIFIED" : "UNENROLLED"}
+        onlineMode={wakeConfig.onlineMode}
       />
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        {/* Reassurance Banner - Voiceprint is always offline */}
+        <View style={styles.reassuranceBanner} testID="voiceprint-offline-guarantee-banner">
+          <MaterialCommunityIcons name="shield-lock" size={18} color="#00FF66" />
+          <Text style={styles.reassuranceText}>
+            <Text style={styles.reassuranceHighlight}>Voiceprint data hamesha 100% offline.</Text>{" "}
+            {wakeConfig.onlineMode
+              ? "Online mode ON hone par bhi voice biometrics kabhi network par nahi jaate — sirf local encrypted SQLCipher."
+              : "Air-Gapped mode fully active. Zero network egress on voice biometrics."}
+          </Text>
+        </View>
         {/* Status Card */}
         <View style={styles.card} testID="voiceprint-status-card">
           <View style={styles.rowBetween}>
@@ -342,5 +353,27 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: "#819C8F",
     lineHeight: 16,
+  },
+  reassuranceBanner: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+    backgroundColor: "#14261C",
+    borderWidth: 1,
+    borderColor: "#00FF66",
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  reassuranceText: {
+    fontFamily: "JetBrainsMono_400Regular",
+    fontSize: 12,
+    color: "#A2B8AE",
+    flex: 1,
+    lineHeight: 17,
+  },
+  reassuranceHighlight: {
+    fontFamily: "SpaceGrotesk_700Bold",
+    color: "#00FF66",
   },
 });

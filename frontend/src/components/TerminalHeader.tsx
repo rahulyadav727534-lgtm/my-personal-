@@ -6,26 +6,34 @@ export function TerminalHeader({
   title,
   subtitle,
   rightBadge,
+  onlineMode,
 }: {
   title: string;
   subtitle?: string;
   rightBadge?: string;
+  onlineMode?: boolean;
 }) {
   return (
     <View style={styles.headerContainer} testID="terminal-header">
       <View style={styles.leftSection}>
-        <View style={styles.pulseDot} />
+        <View style={[styles.pulseDot, onlineMode && styles.pulseDotOnline]} />
         <View>
           <Text style={styles.titleText}>{title}</Text>
           {subtitle && <Text style={styles.subtitleText}>{subtitle}</Text>}
         </View>
       </View>
-      {rightBadge && (
-        <View style={styles.badgeContainer} testID="terminal-badge">
-          <MaterialCommunityIcons name="shield-check" size={14} color="#00FF66" />
-          <Text style={styles.badgeText}>{rightBadge}</Text>
+      <View style={styles.rightCol}>
+        <View style={[styles.badgeContainer, onlineMode && styles.badgeContainerOnline]} testID="terminal-badge">
+          <MaterialCommunityIcons
+            name={onlineMode ? "web" : "shield-check"}
+            size={14}
+            color={onlineMode ? "#FFB800" : "#00FF66"}
+          />
+          <Text style={[styles.badgeText, onlineMode && styles.badgeTextOnline]}>
+            {onlineMode ? "ONLINE MODE: ON" : rightBadge || "AIR-GAPPED"}
+          </Text>
         </View>
-      )}
+      </View>
     </View>
   );
 }
@@ -45,6 +53,10 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
+    flex: 1,
+  },
+  rightCol: {
+    alignItems: "flex-end",
   },
   pulseDot: {
     width: 10,
@@ -55,6 +67,10 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.8,
     shadowRadius: 6,
+  },
+  pulseDotOnline: {
+    backgroundColor: "#FFB800",
+    shadowColor: "#FFB800",
   },
   titleText: {
     fontFamily: "SpaceGrotesk_700Bold",
@@ -72,16 +88,23 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#1A2821",
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
     borderRadius: 6,
     borderWidth: 1,
     borderColor: "#1F382B",
     gap: 6,
   },
+  badgeContainerOnline: {
+    backgroundColor: "#2B2211",
+    borderColor: "#FFB800",
+  },
   badgeText: {
     fontFamily: "JetBrainsMono_400Regular",
-    fontSize: 11,
+    fontSize: 10,
     color: "#00FF66",
+  },
+  badgeTextOnline: {
+    color: "#FFB800",
   },
 });

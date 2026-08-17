@@ -13,7 +13,7 @@ import { TerminalHeader } from "@/src/components/TerminalHeader";
 import { useApp } from "@/src/context/AppContext";
 
 export default function CommandsScreen() {
-  const { commands, addCommand, updateCommandStatus, voiceprint } = useApp();
+  const { commands, addCommand, updateCommandStatus, voiceprint, wakeConfig } = useApp();
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [modalVisible, setModalVisible] = useState(false);
   const [authModalVisible, setAuthModalVisible] = useState(false);
@@ -30,6 +30,7 @@ export default function CommandsScreen() {
     { key: "communication", label: "TIER 2 COMM" },
     { key: "security", label: "TIER 2 SECURITY" },
     { key: "system", label: "SYSTEM" },
+    { key: "online", label: "ONLINE QUERIES" },
   ];
 
   const filteredCommands =
@@ -37,7 +38,12 @@ export default function CommandsScreen() {
       ? commands
       : commands.filter((c) => c.category === selectedCategory);
 
-  const handleExecute = (id: string, tier: 1 | 2, status: string) => {
+  const handleExecute = (id: string, tier: 1 | 2, status: string, category: string) => {
+    // Block online commands when Online Mode is OFF
+    if (category === "online" && !wakeConfig.onlineMode) {
+      updateCommandStatus(id, "failed");
+      return;
+    }
     if (tier === 2 && status === "pending_voice_auth") {
       setPendingCmdId(id);
       setAuthModalVisible(true);
@@ -59,7 +65,8 @@ export default function CommandsScreen() {
       <TerminalHeader
         title="COMMAND TERMINAL"
         subtitle="Offline NLU & Two-Tier Control"
-        rightBadge="AIR-GAPPED NLU"
+        rightBadge={wakeConfig.onlineMode ? "ONLINE NLU ACTIVE" : "AIR-GAPPED NLU"}
+        onlineMode={wakeConfig.onlineMode}
       />
 
       {/* Filter Chips ScrollView */}
@@ -88,6 +95,23 @@ export default function CommandsScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        {/* Online Mode Notice Banner */}
+        <View
+          style={[styles.modeBanner, wakeConfig.onlineMode && styles.modeBannerOnline]}
+          testID="commands-mode-banner"
+        >
+          <MaterialCommunityIcons
+            name={wakeConfig.onlineMode ? "web" : "wifi-off"}
+            size={16}
+            color={wakeConfig.onlineMode ? "#FFB800" : "#00FF66"}
+          />
+          <Text style={[styles.modeBannerText, wakeConfig.onlineMode && styles.modeBannerTextOnline]}>
+            {wakeConfig.onlineMode
+              ? "ONLINE MODE ON — Web search & meaning queries dispatch allowed."
+              : "STRICT OFFLINE — Online queries auto-blocked, only local intents execute."}
+          </Text>
+        </View>
+
         {/* Action Bar */}
         <View style={styles.actionBar}>
           <TouchableOpacity
@@ -110,10 +134,17 @@ export default function CommandsScreen() {
           filteredCommands.map((cmd) => {
             const isTier2 = cmd.tier === 2;
             const isPending = cmd.status === "pending_voice_auth";
+            const isOnlineCmd = cmd.category === "online";
+            const isBlocked = isOnlineCmd && !wakeConfig.onlineMode;
             return (
               <View
                 key={cmd.id}
-                style={[styles.cmdCard, isTier2 && styles.cmdCardTier2]}
+                style={[
+                  styles.cmdCard,
+                  isTier2 && styles.cmdCardTier2,
+                  isOnlineCmd && wakeConfig.onlineMode && styles.cmdCardOnline,
+                  isBlocked && styles.cmdCardBlocked,
+                ]}
                 testID={`command-card-${cmd.id}`}
               >
                 <View style={styles.cmdHeader}>
@@ -133,6 +164,12 @@ export default function CommandsScreen() {
                         TIER {cmd.tier}
                       </Text>
                     </View>
+                    {isOnlineCmd && (
+                      <View style={styles.onlineBadge} testID={`online-badge-${cmd.id}`}>
+                        <MaterialCommunityIcons name="web" size={10} color="#FFB800" />
+                        <Text style={styles.onlineBadgeText}>ONLINE</Text>
+                      </View>
+                    )}
                     <Text style={styles.intentLabel}>{cmd.intent}</Text>
                   </View>
                   <View
@@ -140,6 +177,8 @@ export default function CommandsScreen() {
                       styles.statusBadge,
                       cmd.status === "executed"
                         ? styles.statusSuccess
+                        : cmd.status === "failed"
+                        ? styles.statusFailed
                         : styles.statusWarning,
                     ]}
                   >
@@ -148,6 +187,8 @@ export default function CommandsScreen() {
                         styles.statusText,
                         cmd.status === "executed"
                           ? styles.statusSuccessText
+                          : cmd.status === "failed"
+                          ? styles.statusFailedText
                           : styles.statusWarningText,
                       ]}
                     >
@@ -158,28 +199,44 @@ export default function CommandsScreen() {
 
                 <Text style={styles.cmdTitle}>{cmd.title}</Text>
 
+                {isBlocked && (
+                  <View style={styles.blockedNotice} testID={`blocked-notice-${cmd.id}`}>
+                    <MaterialCommunityIcons name="lock-off" size={12} color="#FF334B" />
+                    <Text style={styles.blockedNoticeText}>
+                      Blocked — Online Mode is OFF. Enable it from Wake Word tab.
+                    </Text>
+                  </View>
+                )}
+
                 <View style={styles.cmdFooter}>
                   <Text style={styles.timeLabel}>{cmd.timestamp}</Text>
                   <TouchableOpacity
                     style={[
                       styles.executeBtn,
                       isPending && styles.executeBtnPending,
+                      isBlocked && styles.executeBtnBlocked,
                     ]}
-                    onPress={() => handleExecute(cmd.id, cmd.tier, cmd.status)}
+                    onPress={() => handleExecute(cmd.id, cmd.tier, cmd.status, cmd.category)}
+                    disabled={isBlocked}
                     testID={`execute-btn-${cmd.id}`}
                   >
                     <MaterialCommunityIcons
-                      name={isPending ? "shield-lock" : "play"}
+                      name={isBlocked ? "lock" : isPending ? "shield-lock" : "play"}
                       size={14}
-                      color={isPending ? "#FFB800" : "#090D0B"}
+                      color={isBlocked ? "#FF334B" : isPending ? "#FFB800" : "#090D0B"}
                     />
                     <Text
                       style={[
                         styles.executeBtnText,
                         isPending && styles.executeBtnTextPending,
+                        isBlocked && styles.executeBtnTextBlocked,
                       ]}
                     >
-                      {isPending ? "Verify Voiceprint" : "Execute Now"}
+                      {isBlocked
+                        ? "Online Mode OFF"
+                        : isPending
+                        ? "Verify Voiceprint"
+                        : "Execute Now"}
                     </Text>
                   </TouchableOpacity>
                 </View>
@@ -399,6 +456,89 @@ const styles = StyleSheet.create({
     borderColor: "#1F382B",
     borderLeftWidth: 4,
     borderLeftColor: "#00FF66",
+  },
+  cmdCardOnline: {
+    borderLeftWidth: 4,
+    borderLeftColor: "#FFB800",
+  },
+  cmdCardBlocked: {
+    opacity: 0.65,
+    borderColor: "#3B1A1F",
+  },
+  onlineBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "#2B2211",
+    borderWidth: 1,
+    borderColor: "#FFB800",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  onlineBadgeText: {
+    fontFamily: "SpaceGrotesk_700Bold",
+    fontSize: 9,
+    color: "#FFB800",
+    letterSpacing: 0.5,
+  },
+  blockedNotice: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "#2A1216",
+    borderWidth: 1,
+    borderColor: "#FF334B",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
+  },
+  blockedNoticeText: {
+    fontFamily: "JetBrainsMono_400Regular",
+    fontSize: 11,
+    color: "#FF334B",
+    flex: 1,
+  },
+  modeBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "#14261C",
+    borderWidth: 1,
+    borderColor: "#00FF66",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+  modeBannerOnline: {
+    backgroundColor: "#2B2211",
+    borderColor: "#FFB800",
+  },
+  modeBannerText: {
+    fontFamily: "JetBrainsMono_400Regular",
+    fontSize: 11,
+    color: "#00FF66",
+    flex: 1,
+    lineHeight: 15,
+  },
+  modeBannerTextOnline: {
+    color: "#FFB800",
+  },
+  statusFailed: {
+    backgroundColor: "#2A1216",
+    borderWidth: 1,
+    borderColor: "#FF334B",
+  },
+  statusFailedText: {
+    color: "#FF334B",
+  },
+  executeBtnBlocked: {
+    backgroundColor: "#2A1216",
+    borderWidth: 1,
+    borderColor: "#FF334B",
+  },
+  executeBtnTextBlocked: {
+    color: "#FF334B",
   },
   cmdHeader: {
     flexDirection: "row",

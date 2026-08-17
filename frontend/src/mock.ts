@@ -5,6 +5,7 @@ export interface WakeWordConfig {
   isActive: boolean;
   modelSizeMB: number;
   batteryImpact: string;
+  onlineMode: boolean; // NEW: Optional Online Mode toggle
 }
 
 export interface CommandItem {
@@ -14,7 +15,7 @@ export interface CommandItem {
   intent: string;
   status: "executed" | "pending_voice_auth" | "failed";
   timestamp: string;
-  category: "hardware" | "communication" | "security" | "system";
+  category: "hardware" | "communication" | "security" | "system" | "online";
 }
 
 export interface VoiceprintUser {
@@ -27,6 +28,7 @@ export interface VoiceprintUser {
 
 export interface PrivacyLedger {
   airGapActive: boolean;
+  onlineModeActive: boolean;
   localEncryptedDb: string;
   dbSizeBytes: string;
   outboundPackets: number;
@@ -37,11 +39,13 @@ export interface SystemStatus {
   batteryUnrestricted: boolean;
   backgroundServiceRunning: boolean;
   offlineNluLoaded: boolean;
+  onlineMode: boolean;
   permissionsGranted: {
     microphone: boolean;
     phoneCalls: boolean;
     camera: boolean;
     systemSettings: boolean;
+    internet: boolean; // Dynamic internet permission
   };
 }
 
@@ -53,6 +57,7 @@ export const initialWakeWordConfig: WakeWordConfig = {
   isActive: true,
   modelSizeMB: 1.8,
   batteryImpact: "0.2% per hour (Low Power NPU)",
+  onlineMode: false, // Default strictly offline
 };
 
 // MOCK API: /api/offline/commands
@@ -87,11 +92,11 @@ export const initialCommands: CommandItem[] = [
   {
     id: "cmd_04",
     tier: 2,
-    title: "Launch Camera & Capture Secure Photo",
-    intent: "CAMERA_CAPTURE",
+    title: "Web Search: Quantum Computing Updates (Online Mode Required)",
+    intent: "WEB_SEARCH_ONLINE",
     status: "pending_voice_auth",
     timestamp: "10:15:20 AM",
-    category: "security",
+    category: "online",
   },
   {
     id: "cmd_05",
@@ -120,6 +125,7 @@ export const initialVoiceprint: VoiceprintUser = {
 // MOCK API: /api/offline/privacy-ledger
 export const initialPrivacyLedger: PrivacyLedger = {
   airGapActive: true,
+  onlineModeActive: false,
   localEncryptedDb: "SQLCipher Local Storage (.db.secure)",
   dbSizeBytes: "4.2 MB",
   outboundPackets: 0,
@@ -131,10 +137,13 @@ export const initialSystemStatus: SystemStatus = {
   batteryUnrestricted: true,
   backgroundServiceRunning: true,
   offlineNluLoaded: true,
+  onlineMode: false,
   permissionsGranted: {
     microphone: true,
     phoneCalls: true,
     camera: true,
     systemSettings: true,
+    internet: false, // Disabled when offline
   },
 };
+

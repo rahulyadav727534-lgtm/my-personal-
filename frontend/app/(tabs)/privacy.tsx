@@ -11,39 +11,67 @@ import { TerminalHeader } from "@/src/components/TerminalHeader";
 import { useApp } from "@/src/context/AppContext";
 
 export default function PrivacyScreen() {
-  const { privacyLedger } = useApp();
+  const { privacyLedger, wakeConfig } = useApp();
   const [exported, setExported] = useState(false);
+  const isOnline = wakeConfig.onlineMode;
 
   return (
     <View style={styles.container} testID="privacy-screen">
       <TerminalHeader
         title="PRIVACY & AUDIT LEDGER"
         subtitle="Zero-Cloud Encrypted Storage"
-        rightBadge="AIR-GAPPED 100%"
+        rightBadge={isOnline ? "ONLINE QUERY CHANNEL" : "AIR-GAPPED 100%"}
+        onlineMode={isOnline}
       />
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {/* Air-gap Verification Card */}
-        <View style={styles.card} testID="airgap-card">
+        {/* Air-gap / Online Channel Verification Card - DYNAMIC */}
+        <View
+          style={[styles.card, isOnline && styles.cardOnline]}
+          testID="airgap-card"
+        >
           <View style={styles.rowBetween}>
             <View style={styles.row}>
-              <View style={styles.iconBox}>
-                <MaterialCommunityIcons name="wifi-off" size={24} color="#00FF66" />
+              <View style={[styles.iconBox, isOnline && styles.iconBoxOnline]}>
+                <MaterialCommunityIcons
+                  name={isOnline ? "web" : "wifi-off"}
+                  size={24}
+                  color={isOnline ? "#FFB800" : "#00FF66"}
+                />
               </View>
               <View>
-                <Text style={styles.cardTitle}>Air-Gapped Telemetry</Text>
-                <Text style={styles.cardSubtitle}>Hardware Network Radio Isolation</Text>
+                <Text style={styles.cardTitle}>
+                  {isOnline ? "Online Query Channel" : "Air-Gapped Telemetry"}
+                </Text>
+                <Text style={styles.cardSubtitle}>
+                  {isOnline ? "Strict Query Isolation (No Analytics)" : "Hardware Network Radio Isolation"}
+                </Text>
               </View>
             </View>
-            <View style={styles.packetBadge}>
-              <Text style={styles.packetValue}>0 BYTES</Text>
+            <View style={[styles.packetBadge, isOnline && styles.packetBadgeOnline]}>
+              <Text style={[styles.packetValue, isOnline && styles.packetValueOnline]}>
+                {isOnline ? `${privacyLedger.outboundPackets} PKT` : "0 BYTES"}
+              </Text>
               <Text style={styles.packetLabel}>OUTBOUND</Text>
             </View>
           </View>
 
           <Text style={styles.cardDesc}>
-            NEXUS-OFFLINE is verified offline. Zero analytics SDKs, zero crash reporters, and zero third-party telemetry packets dispatched over cellular or Wi-Fi.
+            {isOnline
+              ? "Online Mode ACTIVE. Only explicit web search / meaning queries dispatch minimal packets. Voiceprint, command history, and system data remain strictly on-device."
+              : "NEXUS-OFFLINE is verified offline. Zero analytics SDKs, zero crash reporters, and zero third-party telemetry packets dispatched over cellular or Wi-Fi."}
           </Text>
+
+          <View style={[styles.channelStatusRow, isOnline && styles.channelStatusRowOnline]} testID="channel-status-row">
+            <MaterialCommunityIcons
+              name={isOnline ? "radio-tower" : "lock-check"}
+              size={14}
+              color={isOnline ? "#FFB800" : "#00FF66"}
+            />
+            <Text style={[styles.channelStatusText, isOnline && styles.channelStatusTextOnline]}>
+              {privacyLedger.lastAudit}
+            </Text>
+          </View>
         </View>
 
         {/* Local Storage Ledger Card */}
@@ -243,5 +271,45 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: "#819C8F",
     lineHeight: 16,
+  },
+  cardOnline: {
+    borderColor: "#FFB800",
+    backgroundColor: "#1A221C",
+  },
+  iconBoxOnline: {
+    borderColor: "#FFB800",
+    backgroundColor: "#2B2211",
+  },
+  packetBadgeOnline: {
+    backgroundColor: "#2B2211",
+    borderColor: "#FFB800",
+  },
+  packetValueOnline: {
+    color: "#FFB800",
+  },
+  channelStatusRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "#14261C",
+    borderWidth: 1,
+    borderColor: "#00FF66",
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 6,
+    marginTop: 4,
+  },
+  channelStatusRowOnline: {
+    backgroundColor: "#2B2211",
+    borderColor: "#FFB800",
+  },
+  channelStatusText: {
+    fontFamily: "JetBrainsMono_400Regular",
+    fontSize: 11,
+    color: "#00FF66",
+    flex: 1,
+  },
+  channelStatusTextOnline: {
+    color: "#FFB800",
   },
 });

@@ -15,6 +15,7 @@ import {
 interface AppContextType {
   wakeConfig: WakeWordConfig;
   updateWakeConfig: (partial: Partial<WakeWordConfig>) => void;
+  toggleOnlineMode: (enabled: boolean) => void;
   commands: CommandItem[];
   addCommand: (cmd: Omit<CommandItem, "id" | "timestamp">) => void;
   updateCommandStatus: (id: string, status: CommandItem["status"]) => void;
@@ -35,13 +36,29 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [wakeConfig, setWakeConfig] = useState<WakeWordConfig>(initialWakeWordConfig);
   const [commands, setCommands] = useState<CommandItem[]>(initialCommands);
   const [voiceprint, setVoiceprint] = useState<VoiceprintUser>(initialVoiceprint);
-  const [privacyLedger] = useState<PrivacyLedger>(initialPrivacyLedger);
+  const [privacyLedger, setPrivacyLedger] = useState<PrivacyLedger>(initialPrivacyLedger);
   const [systemStatus, setSystemStatus] = useState<SystemStatus>(initialSystemStatus);
   const [activeTab, setActiveTab] = useState<string>("index");
   const [isListening, setIsListening] = useState<boolean>(true);
 
   const updateWakeConfig = (partial: Partial<WakeWordConfig>) => {
     setWakeConfig((prev) => ({ ...prev, ...partial }));
+  };
+
+  const toggleOnlineMode = (enabled: boolean) => {
+    setWakeConfig((prev) => ({ ...prev, onlineMode: enabled }));
+    setSystemStatus((prev) => ({
+      ...prev,
+      onlineMode: enabled,
+      permissionsGranted: { ...prev.permissionsGranted, internet: enabled },
+    }));
+    setPrivacyLedger((prev) => ({
+      ...prev,
+      airGapActive: !enabled,
+      onlineModeActive: enabled,
+      outboundPackets: enabled ? 1 : 0,
+      lastAudit: enabled ? "Online Query Channel Active (Strict Query Isolation)" : "Continuous Air-Gap Verified (0 leaks)",
+    }));
   };
 
   const addCommand = (cmd: Omit<CommandItem, "id" | "timestamp">) => {
@@ -76,6 +93,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       value={{
         wakeConfig,
         updateWakeConfig,
+        toggleOnlineMode,
         commands,
         addCommand,
         updateCommandStatus,
@@ -102,3 +120,4 @@ export function useApp() {
   }
   return context;
 }
+

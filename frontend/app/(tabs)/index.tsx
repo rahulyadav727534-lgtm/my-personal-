@@ -13,20 +13,30 @@ import { TerminalHeader } from "@/src/components/TerminalHeader";
 import { useApp } from "@/src/context/AppContext";
 
 export default function WakeWordScreen() {
-  const { wakeConfig, updateWakeConfig, isListening, toggleListening, addCommand } = useApp();
+  const { wakeConfig, updateWakeConfig, toggleOnlineMode, isListening, toggleListening, addCommand } = useApp();
   const [testCommandInput, setTestCommandInput] = useState("");
   const [simulatedTriggers, setSimulatedTriggers] = useState([
     { id: "tr_1", time: "11:42:10 AM", confidence: 99.1, text: "Hey Assistant, stop alarm" },
-    { id: "tr_2", time: "10:15:02 AM", confidence: 97.8, text: "Hey Assistant, unlock tier two" },
+    { id: "tr_2", time: "10:15:02 AM", confidence: 97.8, text: "Hey Assistant, web search quantum computing" },
   ]);
 
-  const handleSimulateTrigger = (text: string, tier: 1 | 2) => {
+  const handleSimulateTrigger = (text: string, tier: 1 | 2, requiresOnline: boolean = false) => {
+    if (requiresOnline && !wakeConfig.onlineMode) {
+      addCommand({
+        title: `${text} [BLOCKED: Online Mode OFF]`,
+        intent: "ONLINE_BLOCKED",
+        status: "failed",
+        tier: 2,
+        category: "online",
+      });
+      return;
+    }
     addCommand({
       title: text,
       intent: text.toUpperCase().replace(/\s+/g, "_"),
       status: tier === 2 ? "pending_voice_auth" : "executed",
       tier: tier,
-      category: tier === 1 ? "hardware" : "security",
+      category: requiresOnline ? "online" : tier === 1 ? "hardware" : "security",
     });
     setSimulatedTriggers((prev) => [
       {
@@ -44,10 +54,37 @@ export default function WakeWordScreen() {
       <TerminalHeader
         title="WAKE WORD ENGINE"
         subtitle={wakeConfig.engine}
-        rightBadge={wakeConfig.isActive ? "AIR-GAPPED ACTIVE" : "PAUSED"}
+        rightBadge={wakeConfig.onlineMode ? "ONLINE MODE ON" : "AIR-GAPPED ACTIVE"}
+        onlineMode={wakeConfig.onlineMode}
       />
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        {/* Optional Online Mode Switch Card (Requirement #2) */}
+        <View style={[styles.card, wakeConfig.onlineMode && styles.cardOnlineActive]} testID="online-mode-toggle-card">
+          <View style={styles.cardHeader}>
+            <View style={styles.row}>
+              <MaterialCommunityIcons
+                name={wakeConfig.onlineMode ? "web" : "wifi-off"}
+                size={22}
+                color={wakeConfig.onlineMode ? "#FFB800" : "#00FF66"}
+              />
+              <Text style={styles.cardTitle}>Online Mode Switch</Text>
+            </View>
+            <Switch
+              testID="online-mode-switch"
+              value={wakeConfig.onlineMode}
+              onValueChange={(val) => toggleOnlineMode(val)}
+              trackColor={{ false: "#1A2821", true: "#FFB800" }}
+              thumbColor={wakeConfig.onlineMode ? "#090D0B" : "#819C8F"}
+            />
+          </View>
+          <Text style={styles.cardDesc}>
+            {wakeConfig.onlineMode
+              ? "ONLINE MODE ACTIVE: Internet queries, web search, and knowledge lookups are enabled. Voiceprint and local db remain strictly on-device."
+              : "DEFAULT AIR-GAPPED: 100% offline. Zero network packets dispatched. Toggle ON in settings only when web search or meaning queries are explicitly needed."}
+          </Text>
+        </View>
+
         {/* Main Neural Listener Card */}
         <View style={styles.card} testID="listener-status-card">
           <View style={styles.cardHeader}>
@@ -73,7 +110,7 @@ export default function WakeWordScreen() {
           </View>
 
           <Text style={styles.cardDesc}>
-            Running continuously on low-power NPU. Zero network packets dispatched. Wake word: <Text style={styles.highlight}>&quot;{wakeConfig.wakeWord}&quot;</Text>
+            Running continuously on low-power NPU. Wake word: <Text style={styles.highlight}>&quot;{wakeConfig.wakeWord}&quot;</Text>
           </Text>
 
           {/* Waveform visualizer simulation */}
@@ -102,43 +139,23 @@ export default function WakeWordScreen() {
               <Text style={styles.metricValue}>{wakeConfig.sensitivity * 100}%</Text>
             </View>
             <View style={styles.metricBox}>
-              <Text style={styles.metricLabel}>BATTERY LOAD</Text>
-              <Text style={styles.metricValue}>0.2%/h</Text>
+              <Text style={styles.metricLabel}>NETWORK</Text>
+              <Text style={[styles.metricValue, { color: wakeConfig.onlineMode ? "#FFB800" : "#00FF66" }]}>
+                {wakeConfig.onlineMode ? "ONLINE" : "OFFLINE"}
+              </Text>
             </View>
-          </View>
-        </View>
-
-        {/* Sensitivity & Configuration */}
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>ENGINE PARAMETERS</Text>
-          
-          <View style={styles.paramRow}>
-            <Text style={styles.paramLabel}>Active Wake Word</Text>
-            <View style={styles.tagBadge}>
-              <Text style={styles.tagText}>{wakeConfig.wakeWord}</Text>
-            </View>
-          </View>
-
-          <View style={styles.paramRow}>
-            <Text style={styles.paramLabel}>False Positive Filter</Text>
-            <Text style={styles.paramValue}>Strict (Quantized NPU)</Text>
-          </View>
-
-          <View style={styles.paramRow}>
-            <Text style={styles.paramLabel}>Lock-Screen Listening</Text>
-            <Text style={[styles.paramValue, { color: "#00FF66" }]}>ENABLED (Tier 1)</Text>
           </View>
         </View>
 
         {/* Live Simulation Trigger Box */}
         <View style={styles.card} testID="simulation-card">
-          <Text style={styles.sectionTitle}>SIMULATE OFFLINE VOICE TRIGGER</Text>
-          <Text style={styles.cardDesc}>Test wake-word activation and automatic NLU parsing instantly.</Text>
+          <Text style={styles.sectionTitle}>SIMULATE OFFLINE & ONLINE TRIGGERS</Text>
+          <Text style={styles.cardDesc}>Test hardware toggles or online web search (requires Online Mode ON).</Text>
 
           <View style={styles.triggerButtonRow}>
             <TouchableOpacity
               style={styles.triggerBtnPrimary}
-              onPress={() => handleSimulateTrigger("Hey Assistant, turn on flashlight", 1)}
+              onPress={() => handleSimulateTrigger("Hey Assistant, turn on flashlight", 1, false)}
               testID="sim-tier1-btn"
             >
               <MaterialCommunityIcons name="flash" size={16} color="#090D0B" />
@@ -146,19 +163,21 @@ export default function WakeWordScreen() {
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={styles.triggerBtnSecondary}
-              onPress={() => handleSimulateTrigger("Hey Assistant, read latest messages", 2)}
-              testID="sim-tier2-btn"
+              style={[styles.triggerBtnSecondary, wakeConfig.onlineMode && styles.triggerBtnOnline]}
+              onPress={() => handleSimulateTrigger("Hey Assistant, search quantum computing", 2, true)}
+              testID="sim-online-search-btn"
             >
-              <MaterialCommunityIcons name="shield-lock" size={16} color="#00FF66" />
-              <Text style={styles.triggerBtnTextSecondary}>Tier 2: Read SMS</Text>
+              <MaterialCommunityIcons name="web" size={16} color={wakeConfig.onlineMode ? "#FFB800" : "#00FF66"} />
+              <Text style={[styles.triggerBtnTextSecondary, wakeConfig.onlineMode && styles.triggerBtnTextOnline]}>
+                {wakeConfig.onlineMode ? "Online Search" : "Search (Locked Offline)"}
+              </Text>
             </TouchableOpacity>
           </View>
 
           <View style={styles.customInputContainer}>
             <TextInput
               style={styles.textInput}
-              placeholder="Or type custom offline command..."
+              placeholder="Or type custom offline/online query..."
               placeholderTextColor="#819C8F"
               value={testCommandInput}
               onChangeText={setTestCommandInput}
@@ -168,7 +187,8 @@ export default function WakeWordScreen() {
               style={styles.sendBtn}
               onPress={() => {
                 if (!testCommandInput.trim()) return;
-                handleSimulateTrigger(testCommandInput, testCommandInput.toLowerCase().includes("sms") || testCommandInput.toLowerCase().includes("camera") ? 2 : 1);
+                const isOnlineQuery = testCommandInput.toLowerCase().includes("search") || testCommandInput.toLowerCase().includes("meaning") || testCommandInput.toLowerCase().includes("wiki");
+                handleSimulateTrigger(testCommandInput, isOnlineQuery ? 2 : 1, isOnlineQuery);
                 setTestCommandInput("");
               }}
               testID="custom-command-submit"
@@ -180,7 +200,7 @@ export default function WakeWordScreen() {
 
         {/* Recent Triggers Log */}
         <View style={styles.card}>
-          <Text style={styles.sectionTitle}>RECENT WAKE-WORD LOGS (LOCAL NPU)</Text>
+          <Text style={styles.sectionTitle}>RECENT WAKE-WORD LOGS</Text>
           {simulatedTriggers.map((tr) => (
             <View key={tr.id} style={styles.logItem} testID={`wake-log-${tr.id}`}>
               <View style={styles.row}>
@@ -216,6 +236,10 @@ const styles = StyleSheet.create({
     borderColor: "#1F382B",
     padding: 16,
     gap: 12,
+  },
+  cardOnlineActive: {
+    borderColor: "#FFB800",
+    backgroundColor: "#1A221C",
   },
   cardHeader: {
     flexDirection: "row",
@@ -290,35 +314,6 @@ const styles = StyleSheet.create({
     color: "#E2ECE7",
     letterSpacing: 0.5,
   },
-  paramRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingVertical: 4,
-  },
-  paramLabel: {
-    fontFamily: "JetBrainsMono_400Regular",
-    fontSize: 13,
-    color: "#A2B8AE",
-  },
-  paramValue: {
-    fontFamily: "JetBrainsMono_400Regular",
-    fontSize: 13,
-    color: "#E2ECE7",
-  },
-  tagBadge: {
-    backgroundColor: "#1A2821",
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: "#00FF66",
-  },
-  tagText: {
-    fontFamily: "SpaceGrotesk_700Bold",
-    fontSize: 12,
-    color: "#00FF66",
-  },
   triggerButtonRow: {
     flexDirection: "row",
     gap: 10,
@@ -350,10 +345,17 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     gap: 8,
   },
+  triggerBtnOnline: {
+    borderColor: "#FFB800",
+    backgroundColor: "#2B2211",
+  },
   triggerBtnTextSecondary: {
     fontFamily: "SpaceGrotesk_700Bold",
     fontSize: 13,
     color: "#00FF66",
+  },
+  triggerBtnTextOnline: {
+    color: "#FFB800",
   },
   customInputContainer: {
     flexDirection: "row",
@@ -408,3 +410,4 @@ const styles = StyleSheet.create({
     color: "#819C8F",
   },
 });
+
